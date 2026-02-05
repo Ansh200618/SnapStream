@@ -28,5 +28,5 @@
     ]
   },
   "options_page": "/views/options.html",
-  "incognito": "split"
+  "incognito": "spanning"
 }

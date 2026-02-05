@@ -19,6 +19,20 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
           value: activeTabOrigin,
         });
       }
+      
+      // Add origin header for better compatibility
+      const originHeader = details.requestHeaders.find(
+        (header) => header.name === 'Origin'
+      );
+      
+      if (originHeader) {
+        originHeader.value = activeTabOrigin;
+      } else {
+        details.requestHeaders.push({
+          name: 'Origin',
+          value: activeTabOrigin,
+        });
+      }
     }
 
     return {
@@ -27,6 +41,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   },
   // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/ResourceType
   // `imageset` isn't supported in all browsers, and we're not using it yet anyway
-  { types: ['image', /* 'imageset', */ 'media', 'object'], urls: [] },
+  { types: ['image', /* 'imageset', */ 'media', 'object'], urls: ['<all_urls>'] },
   ['blocking', 'requestHeaders', 'extraHeaders']
 );

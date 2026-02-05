@@ -83,7 +83,7 @@ const Options = () => {
     </h1>
 
     <fieldset>
-      <legend>About</legend>
+      <legend>Usage Guide</legend>
       <${SupportList} />
     </fieldset>
 

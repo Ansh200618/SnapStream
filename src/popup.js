@@ -28,21 +28,10 @@ const Popup = () => {
   const [linkedImages, setLinkedImages] = useState([]);
   const [selectedImages, setSelectedImages] = useState([]);
   const [visibleImages, setVisibleImages] = useState([]);
-  useEffect(() => {
-    const setMessageResult = (result) => {
-      setAllImages((allImages) => unique([...allImages, ...result.allImages]));
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
 
-      setLinkedImages((linkedImages) =>
-        unique([...linkedImages, ...result.linkedImages])
-      );
-
-      localStorage.active_tab_origin = result.origin;
-    };
-
-    // Add images to state and trigger filtration.
-    // `sendImages.js` is injected into all frames of the active tab, so this listener may be called multiple times.
-    chrome.runtime.onMessage.addListener(setMessageResult);
-
+  const loadImages = useCallback(() => {
+    setIsLoadingImages(true);
     // Get images on the page
     chrome.windows.getCurrent((currentWindow) => {
       chrome.tabs.query(
@@ -55,10 +44,41 @@ const Popup = () => {
         }
       );
     });
+  }, []);
+
+  const refreshImages = useCallback(() => {
+    // Clear existing images and reload
+    setAllImages([]);
+    setLinkedImages([]);
+    setSelectedImages([]);
+    loadImages();
+  }, [loadImages]);
+
+  useEffect(() => {
+    const setMessageResult = (result) => {
+      setAllImages((allImages) => unique([...allImages, ...result.allImages]));
+
+      setLinkedImages((linkedImages) =>
+        unique([...linkedImages, ...result.linkedImages])
+      );
+
+      localStorage.active_tab_origin = result.origin;
+      
+      // Set loading to false when we receive images
+      setIsLoadingImages(false);
+    };
+
+    // Add images to state and trigger filtration.
+    // `sendImages.js` is injected into all frames of the active tab, so this listener may be called multiple times.
+    chrome.runtime.onMessage.addListener(setMessageResult);
+
+    // Initial load
+    loadImages();
 
     return () => {
       chrome.runtime.onMessage.removeListener(setMessageResult);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const imagesCacheRef = useRef(null); // Not displayed; only used for filtering by natural width / height
@@ -238,6 +258,15 @@ const Popup = () => {
           }}
         >
           <img class="toggle" src="/images/times.svg" />
+        </button>
+
+        <button
+          id="refresh_images_button"
+          title="Refresh images"
+          disabled=${isLoadingImages}
+          onClick=${refreshImages}
+        >
+          <img src="/images/refresh.svg" />
         </button>
 
         <button
