@@ -1,4 +1,5 @@
 import html from './html.js';
+import { downloadImageRobustly } from './robustDownload.js';
 
 export const ImageUrlTextbox = (props) => html`
   <input
@@ -32,8 +33,18 @@ export const DownloadImageButton = ({ imageUrl, onClick, ...props }) => {
       type="button"
       title="Download"
       style=${{ backgroundImage: `url("../images/download.svg")` }}
-      onClick=${(e) => {
-        chrome.downloads.download({ url: imageUrl });
+      onClick=${async (e) => {
+        const result = await downloadImageRobustly(imageUrl);
+        if (!result.success) {
+          console.error('[SnapStream] Failed to download image:', result.error);
+          // Optionally show a notification to the user
+          chrome.notifications?.create({
+            type: 'basic',
+            iconUrl: '../images/icon_128.png',
+            title: 'SnapStream Download Failed',
+            message: `Failed to download image: ${result.error}`,
+          });
+        }
         onClick?.(e);
       }}
       ...${props}
