@@ -1,0 +1,32 @@
+{
+  "name": "SnapStream - Image Downloader",
+  "description": "Effortlessly discover, filter, and download images from any website",
+  "version": "4.0.0",
+  "minimum_chrome_version": "72",
+  "manifest_version": 2,
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "webRequest",
+    "webRequestBlocking",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "browser_action": {
+    "default_icon": "/images/icon_128.png",
+    "default_popup": "/views/popup.html"
+  },
+  "icons": {
+    "16": "/images/icon_16.png",
+    "48": "/images/icon_48.png",
+    "128": "/images/icon_128.png"
+  },
+  "background": {
+    "scripts": [
+      "/src/background/handleUpdates.js",
+      "/src/background/setReferrer.js"
+    ]
+  },
+  "options_page": "/views/options.html",
+  "incognito": "split"
+}

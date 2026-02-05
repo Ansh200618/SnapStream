@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SnapStream Image Downloader - Preview</title>
+    <link rel="stylesheet" href="stylesheets/main.css" type="text/css" />
+    <link rel="stylesheet" href="lib/nouislider.min.css" type="text/css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .preview-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .preview-header {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .preview-header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .preview-header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .popup-preview {
+            width: 800px;
+            height: 600px;
+            border: none;
+        }
+        .info-box {
+            padding: 20px;
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            margin: 20px;
+        }
+        .info-box h3 {
+            margin: 0 0 10px 0;
+            color: #92400e;
+        }
+        .info-box ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            color: #78350f;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <div class="preview-header">
+            <h1>🎯 SnapStream - Image Downloader</h1>
+            <p>Effortlessly discover, filter, and download images from any website</p>
+            <p style="font-size: 12px; margin-top: 10px;">Version 4.0.0 | Manifest V2</p>
+        </div>
+        
+        <div class="info-box">
+            <h3>✨ Key Features</h3>
+            <ul>
+                <li><strong>Smart Image Detection:</strong> Automatically detects all images including background images, srcset, and picture elements</li>
+                <li><strong>Advanced Filtering:</strong> Filter by URL, image dimensions, and file type</li>
+                <li><strong>Bulk Download:</strong> Download all filtered images with one click</li>
+                <li><strong>Custom Naming:</strong> Rename files and organize into subfolders</li>
+                <li><strong>Real-time Preview:</strong> See thumbnails before downloading</li>
+            </ul>
+        </div>
+
+        <div style="padding: 20px;">
+            <h2 style="margin-top: 0;">Extension Popup Preview</h2>
+            <p style="color: #666;">This is how the extension popup looks when you click the extension icon:</p>
+            <iframe src="views/popup.html" class="popup-preview"></iframe>
+        </div>
+
+        <div style="padding: 20px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+            <h3 style="margin-top: 0;">📥 Installation</h3>
+            <ol style="color: #374151; line-height: 1.8;">
+                <li>Clone the repository: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">git clone https://github.com/Ansh200618/WEB_Works.git</code></li>
+                <li>Navigate to the directory and install dependencies: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">npm install</code></li>
+                <li>Build the extension: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">npm run build</code></li>
+                <li>Open Chrome and go to <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">chrome://extensions</code></li>
+                <li>Enable "Developer mode" (toggle in top right)</li>
+                <li>Click "Load unpacked" and select the <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">build/</code> folder</li>
+            </ol>
+            <p style="margin-top: 15px; padding: 10px; background: #dbeafe; border-left: 3px solid #3b82f6; color: #1e40af;">
+                <strong>Note:</strong> After installation, you'll be automatically redirected to the GitHub repository!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Mock Chrome APIs for preview
+        window.chrome = {
+            runtime: {
+                onMessage: { addListener: () => {}, removeListener: () => {} },
+                openOptionsPage: () => { alert('Options would open here'); },
+                getManifest: () => ({ version: '4.0.0' })
+            },
+            tabs: {
+                query: () => {},
+                executeScript: () => {},
+                create: () => {}
+            },
+            windows: {
+                getCurrent: (cb) => cb({ id: 'preview-window' })
+            },
+            downloads: {
+                download: () => {},
+                onDeterminingFilename: { addListener: () => {}, removeListener: () => {} }
+            }
+        };
+    </script>
+</body>
+</html>
