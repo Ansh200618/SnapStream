@@ -1,0 +1,354 @@
+:root {
+  /* Colors - Glass Morphism Theme */
+  /* Neutral with transparency for glass effect */
+  --neutral-lightest: hsla(0, 0%, 100%, 0.9);
+  --neutral-lighter: hsla(0, 0%, 95%, 0.8);
+  --neutral-light: hsl(300, 11%, 80%);
+  --neutral: hsl(300, 11%, 60%);
+  --neutral-dark: hsl(300, 11%, 10%);
+  --neutral-darker: hsl(300, 11%, 5%);
+  --neutral-darkest: hsl(300, 11%, 0%);
+
+  --neutral-transparent-5: hsla(0, 0%, 0%, 0.05);
+  --neutral-transparent-15: hsla(0, 0%, 0%, 0.15);
+  --neutral-transparent-20: hsla(0, 0%, 0%, 0.2);
+
+  /* Glass morphism specific colors */
+  --glass-bg: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.25);
+  --glass-shadow: rgba(0, 0, 0, 0.1);
+
+  /* Accent - Updated for modern look */
+  --accent: hsl(260, 80%, 60%);
+  --accent-dark: hsl(260, 80%, 50%);
+  --accent-light: hsl(260, 80%, 70%);
+
+  /* Success */
+  --success-light: hsl(145, 64%, 43%);
+  --success: hsl(145, 64%, 40%);
+
+  /* Warning */
+  --warning-light: hsl(37, 90%, 51%);
+  --warning: hsl(37, 90%, 48%);
+
+  /* Danger */
+  --danger-light: hsl(6, 78%, 57%);
+  --danger: hsl(6, 78%, 54%);
+
+  /* Foreground */
+  --foreground: hsl(0, 0%, 20%);
+  --foreground-light: hsl(0, 0%, 60%);
+  --foreground-inverse: hsl(0, 0%, 100%);
+
+  /* Border radii - Increased for modern glass look */
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 16px;
+
+  /* Elevations */
+  --elevation-1: 0 4px 6px var(--neutral-transparent-20);
+  --elevation-2: 0 8px 16px var(--neutral-transparent-15),
+    0 4px 8px var(--neutral-transparent-20);
+  --elevation-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+
+  /* Transitions */
+  --transition-timing-ease-out: cubic-bezier(0.25, 0.8, 0.25, 1);
+  --transition-timing-linear: linear;
+
+  --transition-all: all 200ms var(--transition-timing-ease-out);
+  --transition-background: background 200ms var(--transition-timing-ease-out);
+  --transition-border-color: border-color 200ms
+    var(--transition-timing-ease-out);
+  --transition-box-shadow: box-shadow 200ms var(--transition-timing-ease-out);
+  --transition-color: color 200ms var(--transition-timing-ease-out);
+  --transition-opacity: opacity 200ms var(--transition-timing-linear); /* Timing opacity looks weird */
+  --transition-transform: transform 200ms var(--transition-timing-ease-out);
+
+  /* Misc */
+  --border-color: var(--glass-border);
+  --image-background: var(--neutral-light);
+  --input-background: var(--glass-bg);
+  --images-container-gap: 12px;
+  --images-container-padding: 16px;
+  --tab-background: var(--neutral-lightest);
+  --tab-border: var(--neutral-lighter);
+  --tab-header-background: var(--neutral-lighter);
+}
+
+html {
+  box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  min-width: 400px;
+  min-height: 600px;
+  font: 13px/1.5em 'Lucida Grande', Arial, sans-serif;
+  color: var(--foreground);
+  background: linear-gradient(135deg, hsl(260, 80%, 65%) 0%, hsl(260, 80%, 55%) 100%);
+  background-attachment: fixed;
+}
+
+/* https://stackoverflow.com/questions/11243337/a-taller-than-its-img-child */
+a > img {
+  display: block;
+}
+
+img {
+  max-width: 100%;
+}
+
+svg {
+  fill: currentColor;
+}
+
+fieldset {
+  border-color: var(--border-color);
+  border-width: 0;
+  border-top-width: 2px;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+fieldset + fieldset {
+  margin-top: 12px;
+}
+
+fieldset > p:first-of-type {
+  margin-top: 0;
+}
+
+fieldset > p:last-of-type {
+  margin-bottom: 0;
+}
+
+legend {
+  margin-left: -9px;
+  padding: 0 8px;
+  font-weight: bold;
+}
+
+.left {
+  float: left;
+}
+.right {
+  float: right;
+}
+.clear {
+  clear: both;
+}
+
+.hidden {
+  display: none;
+}
+
+/* text */
+.accent {
+  color: var(--accent);
+}
+.success {
+  color: var(--success);
+}
+.warning {
+  color: var(--warning);
+}
+.danger {
+  color: var(--danger);
+}
+.light {
+  color: var(--foreground-light);
+}
+.inverse {
+  color: var(--foreground-inverse);
+}
+
+/* backgrounds */
+.bg-accent {
+  background: var(--accent);
+}
+.bg-success {
+  background: var(--success);
+}
+.bg-warning {
+  background: var(--warning);
+}
+.bg-danger {
+  background: var(--danger);
+}
+
+/* links */
+a:link,
+a:visited {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover,
+a:active {
+  color: var(--accent-dark);
+}
+
+hr {
+  border: 1px dotted var(--neutral);
+  border-bottom: none;
+  margin: 4px 0;
+}
+
+/* inputs */
+input[type='text'],
+input[type='button'],
+input[type='number'],
+select {
+  border-radius: var(--border-radius-md);
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+input[type='text'],
+input[type='number'],
+select {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 8px 12px;
+  box-shadow: 0 4px 6px var(--glass-shadow);
+}
+
+input[type='text']:focus,
+input[type='number']:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px var(--glass-shadow), 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+input[type='number'] {
+  padding-right: 4px;
+}
+
+select {
+  padding: 7px 12px;
+}
+
+input[type='button'],
+input[type='checkbox'] {
+  cursor: pointer;
+}
+
+input[type='button'] {
+  min-width: 50px;
+  color: var(--neutral-lightest);
+  border: 1px solid var(--glass-border);
+  padding: 8px 12px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: var(--transition-background), var(--transition-transform);
+}
+
+input[type='button']:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px var(--glass-shadow);
+}
+
+input[type='button']:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+input[type='button'].loading:disabled {
+  cursor: wait;
+}
+
+/* accent */
+input[type='button'].accent {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type='button'].accent:hover,
+input[type='button'].accent:focus,
+input[type='button'].accent:active {
+  background: var(--accent);
+}
+
+input[type='button'].accent.ghost {
+  border: 2px solid var(--accent);
+  background: var(--neutral-lightest);
+  color: var(--accent);
+}
+
+/* success */
+input[type='button'].success {
+  border: 2px solid var(--success-light);
+  background: var(--success-light);
+}
+input[type='button'].success:hover,
+input[type='button'].success:focus,
+input[type='button'].success:active {
+  border: 2px solid var(--success);
+  background: var(--success);
+}
+
+input[type='button'].success.ghost {
+  border: 2px solid var(--success);
+  background: var(--neutral-lightest);
+  color: var(--success);
+}
+
+/* warning */
+input[type='button'].warning {
+  border: 2px solid var(--warning-light);
+  background: var(--warning-light);
+}
+input[type='button'].warning:hover,
+input[type='button'].warning:focus,
+input[type='button'].warning:active {
+  border: 2px solid var(--warning);
+  background: var(--warning);
+}
+
+input[type='button'].warning.ghost {
+  border: 2px solid var(--warning);
+  background: var(--neutral-lightest);
+  color: var(--warning);
+}
+
+/* danger */
+input[type='button'].danger {
+  border: 2px solid var(--danger-light);
+  background: var(--danger-light);
+}
+input[type='button'].danger:hover,
+input[type='button'].danger:focus,
+input[type='button'].danger:active {
+  border: 2px solid var(--danger);
+  background: var(--danger);
+}
+
+input[type='button'].danger.ghost {
+  border: 2px solid var(--danger);
+  background: var(--neutral-lightest);
+  color: var(--danger);
+}
+
+/* neutral */
+input[type='button'].neutral {
+  border: 2px solid var(--neutral-transparent-20);
+  background: var(--neutral-transparent-20);
+}
+
+input[type='button'].neutral.ghost {
+  border: 2px solid var(--neutral-transparent-20);
+  background: var(--neutral-lightest);
+  color: var(--foreground);
+}
+
+label {
+  cursor: pointer;
+  display: inline-flex;
+}
