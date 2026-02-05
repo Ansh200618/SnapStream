@@ -9,6 +9,7 @@ import html, {
 import { useDebouncedCallback } from './hooks/useDebouncedCallback.js';
 import { useRunAfterUpdate } from './hooks/useRunAfterUpdate.js';
 import { isIncludedIn, removeSpecialCharacters, unique } from './utils.js';
+import { downloadImageRobustly } from './robustDownload.js';
 
 import { AdvancedFilters } from './AdvancedFilters.js';
 import { DownloadConfirmation } from './DownloadConfirmation.js';
@@ -177,114 +178,64 @@ const Popup = () => {
     setDownloadIsInProgress(true);
     currentImageNumberRef.current = 1;
 
-    for (const image of imagesToDownload) {
-      await new Promise((resolve) => {
-        chrome.downloads.download({ url: image }, resolve);
-      });
-    }
+    let downloadedCount = 0;
+    let failedCount = 0;
 
-    setDownloadIsInProgress(false);
-  }
-
-  const currentImageNumberRef = useRef(1);
-  
-  // Valid image extensions constant
-  const VALID_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'jfif'];
-  
-  // Format indicator to extension mapping
-  const FORMAT_INDICATORS = {
-    '/jpeg': 'jpg',
-    'format=jpeg': 'jpg',
-    'format=jpg': 'jpg',
-    '/png': 'png',
-    'format=png': 'png',
-    '/webp': 'webp',
-    'format=webp': 'webp',
-    '/gif': 'gif',
-    'format=gif': 'gif',
-  };
-  
-  // Helper function to extract proper image extension
-  const getImageExtension = useCallback((filename, imageUrl) => {
-    const regex = /(?:\.([^.]+))?$/;
-    const match = regex.exec(filename);
-    let extension = match ? match[1] : undefined;
-    
-    // Fix for HTM issue: If extension is htm/html/undefined or not a valid image extension,
-    // try to extract the correct extension from the original image URL
-    const needsExtensionFix = !extension || 
-      extension.toLowerCase() === 'htm' || 
-      extension.toLowerCase() === 'html';
-    
-    if (needsExtensionFix) {
-      // Try to get extension from the original image URL
-      const urlExtensionMatch = imageUrl.match(/\.([a-z0-9]+)(?:[?#]|$)/i);
-      if (urlExtensionMatch && urlExtensionMatch[1]) {
-        const urlExtension = urlExtensionMatch[1].toLowerCase();
-        // Check if it's a valid image extension
-        if (VALID_IMAGE_EXTENSIONS.includes(urlExtension)) {
-          return urlExtension;
-        }
-      }
+    for (const imageUrl of imagesToDownload) {
+      // Prepare filename based on options
+      let filename = '';
       
-      // Check if URL contains image format indicators (for URLs without extensions)
-      for (const [indicator, ext] of Object.entries(FORMAT_INDICATORS)) {
-        if (imageUrl.includes(indicator)) {
-          return ext;
-        }
-      }
-      
-      // If still no valid extension found, default to jpg (most common format)
-      return 'jpg';
-    }
-    
-    return extension;
-  }, []);
-  
-  const suggestNewFilename = useCallback(
-    (item, suggest) => {
-      const imageUrl = imagesToDownload[currentImageNumberRef.current - 1];
-      const correctedExtension = getImageExtension(item.filename, imageUrl);
-      
-      let newFilename = '';
       if (options.folder_name) {
-        newFilename += `${options.folder_name}/`;
+        filename += `${options.folder_name}/`;
       }
       
       if (options.new_file_name) {
         // User provided a custom filename
         if (imagesToDownload.length === 1) {
-          newFilename += `${options.new_file_name}.${correctedExtension}`;
+          filename += options.new_file_name;
         } else {
           const numberOfDigits = imagesToDownload.length.toString().length;
           const formattedImageNumber = `${currentImageNumberRef.current}`.padStart(
             numberOfDigits,
             '0'
           );
-          newFilename += `${options.new_file_name}${formattedImageNumber}.${correctedExtension}`;
+          filename += `${options.new_file_name}${formattedImageNumber}`;
         }
-      } else {
-        // No custom filename - use original but fix the extension if needed
-        const baseFilename = item.filename.replace(/\.[^.]+$/, ''); // Remove existing extension
-        newFilename += `${baseFilename}.${correctedExtension}`;
       }
       
-      // Increment counter for next download (only when downloading multiple with custom name)
+      // Download with robust method (extension will be determined from Content-Type)
+      const result = await downloadImageRobustly(imageUrl, { 
+        filename: filename || undefined,
+        saveAs: false 
+      });
+      
+      if (result.success) {
+        downloadedCount++;
+      } else {
+        failedCount++;
+        console.error(`[SnapStream] Failed to download ${imageUrl}:`, result.error);
+      }
+      
+      // Increment counter for next download
       if (options.new_file_name && imagesToDownload.length > 1) {
         currentImageNumberRef.current += 1;
       }
-      
-      suggest({ filename: newFilename });
-    },
-    [imagesToDownload, options.folder_name, options.new_file_name, getImageExtension]
-  );
+    }
 
-  useEffect(() => {
-    chrome.downloads.onDeterminingFilename.addListener(suggestNewFilename);
-    return () => {
-      chrome.downloads.onDeterminingFilename.removeListener(suggestNewFilename);
-    };
-  }, [suggestNewFilename]);
+    setDownloadIsInProgress(false);
+    
+    // Show summary notification if there were any failures
+    if (failedCount > 0) {
+      chrome.notifications?.create({
+        type: 'basic',
+        iconUrl: '../images/icon_128.png',
+        title: 'SnapStream Download Complete',
+        message: `Downloaded ${downloadedCount} images successfully. ${failedCount} failed. URLs may not be direct image links or there may be network issues.`,
+      });
+    }
+  }
+
+  const currentImageNumberRef = useRef(1);
 
   const runAfterUpdate = useRunAfterUpdate();
 

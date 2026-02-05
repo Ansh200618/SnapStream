@@ -41,6 +41,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   },
   // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/ResourceType
   // `imageset` isn't supported in all browsers, and we're not using it yet anyway
-  { types: ['image', /* 'imageset', */ 'media', 'object'], urls: ['<all_urls>'] },
+  // Added 'xmlhttprequest' to handle fetch() requests from robustDownload.js
+  { types: ['image', /* 'imageset', */ 'media', 'object', 'xmlhttprequest'], urls: ['<all_urls>'] },
   ['blocking', 'requestHeaders', 'extraHeaders']
 );
