@@ -105,7 +105,20 @@ export async function downloadImageRobustly(url, options = {}) {
     }
 
     // 4. Determine extension based on the Header, not the URL
-    let extension = getExtensionFromContentType(contentType) || 'jpg'; // Default to jpg
+    let extension = getExtensionFromContentType(contentType);
+    
+    // If extension couldn't be determined from Content-Type, try URL path
+    if (!extension) {
+      const urlPath = new URL(url).pathname;
+      const urlExtensionMatch = urlPath.match(/\.([a-z0-9]+)$/i);
+      if (urlExtensionMatch) {
+        extension = urlExtensionMatch[1].toLowerCase();
+      } else {
+        // Last resort: default to jpg
+        console.warn(`[SnapStream] Could not determine file extension from Content-Type or URL, defaulting to jpg for: ${url}`);
+        extension = 'jpg';
+      }
+    }
 
     // 5. Convert to Blob
     const blob = await response.blob();
@@ -141,17 +154,26 @@ export async function downloadImageRobustly(url, options = {}) {
         filename: filename,
         saveAs: options.saveAs || false,
       }, (downloadId) => {
-        // Clean up memory
-        URL.revokeObjectURL(objectUrl);
-        
         if (chrome.runtime.lastError) {
           console.error(`[SnapStream] Download failed:`, chrome.runtime.lastError);
+          URL.revokeObjectURL(objectUrl);
           resolve({
             success: false,
             error: chrome.runtime.lastError.message,
             url: url,
           });
         } else {
+          // Listen for download completion before revoking the object URL
+          const listener = (delta) => {
+            if (delta.id === downloadId && delta.state) {
+              if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+                chrome.downloads.onChanged.removeListener(listener);
+                URL.revokeObjectURL(objectUrl);
+              }
+            }
+          };
+          chrome.downloads.onChanged.addListener(listener);
+          
           resolve({
             success: true,
             downloadId: downloadId,

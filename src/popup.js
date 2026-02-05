@@ -178,8 +178,8 @@ const Popup = () => {
     setDownloadIsInProgress(true);
     currentImageNumberRef.current = 1;
 
-    let successCount = 0;
-    let failureCount = 0;
+    let downloadedCount = 0;
+    let failedCount = 0;
 
     for (const imageUrl of imagesToDownload) {
       // Prepare filename based on options
@@ -210,9 +210,9 @@ const Popup = () => {
       });
       
       if (result.success) {
-        successCount++;
+        downloadedCount++;
       } else {
-        failureCount++;
+        failedCount++;
         console.error(`[SnapStream] Failed to download ${imageUrl}:`, result.error);
       }
       
@@ -225,12 +225,12 @@ const Popup = () => {
     setDownloadIsInProgress(false);
     
     // Show summary notification if there were any failures
-    if (failureCount > 0) {
+    if (failedCount > 0) {
       chrome.notifications?.create({
         type: 'basic',
         iconUrl: '../images/icon_128.png',
         title: 'SnapStream Download Complete',
-        message: `Downloaded ${successCount} images successfully. ${failureCount} failed (likely HTML pages instead of images).`,
+        message: `Downloaded ${downloadedCount} images successfully. ${failedCount} failed. URLs may not be direct image links or there may be network issues.`,
       });
     }
   }
