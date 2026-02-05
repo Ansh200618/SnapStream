@@ -6,11 +6,18 @@
   "manifest_version": 2,
   "permissions": [
     "activeTab",
+    "tabs",
     "downloads",
+    "storage",
     "webRequest",
     "webRequestBlocking",
-    "http://*/*",
-    "https://*/*"
+    "webNavigation",
+    "contextMenus",
+    "cookies",
+    "clipboardWrite",
+    "notifications",
+    "<all_urls>",
+    "unlimitedStorage"
   ],
   "browser_action": {
     "default_icon": "images/icon_128.png",
@@ -28,5 +35,11 @@
     ]
   },
   "options_page": "views/options.html",
-  "incognito": "spanning"
+  "incognito": "spanning",
+  "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
+  "web_accessible_resources": [
+    "images/*",
+    "lib/*",
+    "stylesheets/*"
+  ]
 }
