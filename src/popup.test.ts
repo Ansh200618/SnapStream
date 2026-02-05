@@ -9,7 +9,7 @@ beforeEach(() => {
   
   // Mock tabs.query to call the callback with active tabs
   asMockedFunction(chrome.tabs.query).mockImplementation((_, callback: any) => {
-    callback([{ id: 1 }]);
+    callback([{ id: 1, url: 'https://example.com' }]);
   });
   
   // Mock windows.getCurrent to call the callback with window
