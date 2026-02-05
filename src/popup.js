@@ -38,9 +38,27 @@ const Popup = () => {
       chrome.tabs.query(
         { active: true, windowId: currentWindow.id },
         (activeTabs) => {
-          chrome.tabs.executeScript(activeTabs[0].id, {
+          const currentTab = activeTabs[0];
+          
+          // Check if the current tab is a restricted page (chrome://, chrome-extension://, etc.)
+          if (!currentTab || !currentTab.url || 
+              currentTab.url.startsWith('chrome://') || 
+              currentTab.url.startsWith('chrome-extension://') ||
+              currentTab.url.startsWith('about:')) {
+            console.warn('[SnapStream] Cannot run on this page. Please navigate to a regular website.');
+            setIsLoadingImages(false);
+            return;
+          }
+          
+          chrome.tabs.executeScript(currentTab.id, {
             file: 'src/sendImages.js',
             allFrames: true,
+          }, function() {
+            // Handle chrome.runtime.lastError to prevent "Unchecked runtime.lastError" warnings
+            if (chrome.runtime.lastError) {
+              console.error('[SnapStream] Script execution failed:', chrome.runtime.lastError.message);
+              setIsLoadingImages(false);
+            }
           });
         }
       );

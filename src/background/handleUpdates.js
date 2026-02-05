@@ -1,7 +1,7 @@
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    // Open the GitHub repository after install
-    chrome.tabs.create({ url: 'https://github.com/Ansh200618/WEB_Works' });
+    // Open the options page after install
+    chrome.runtime.openOptionsPage();
   } else if (
     details.reason === 'update' &&
     /^(((0|1)\..*)|(2\.(0|1)(\..*)?))$/.test(details.previousVersion)
