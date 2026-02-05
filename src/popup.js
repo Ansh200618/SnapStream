@@ -38,7 +38,7 @@ const Popup = () => {
         { active: true, windowId: currentWindow.id },
         (activeTabs) => {
           chrome.tabs.executeScript(activeTabs[0].id, {
-            file: '/src/sendImages.js',
+            file: 'src/sendImages.js',
             allFrames: true,
           });
         }
@@ -257,7 +257,7 @@ const Popup = () => {
             }));
           }}
         >
-          <img class="toggle" src="/images/times.svg" />
+          <img class="toggle" src="../images/times.svg" />
         </button>
 
         <button
@@ -266,7 +266,7 @@ const Popup = () => {
           disabled=${isLoadingImages}
           onClick=${refreshImages}
         >
-          <img src="/images/refresh.svg" />
+          <img src="../images/refresh.svg" />
         </button>
 
         <button
@@ -274,7 +274,7 @@ const Popup = () => {
           title="Options"
           onClick=${() => chrome.runtime.openOptionsPage()}
         >
-          <img src="/images/cog.svg" />
+          <img src="../images/cog.svg" />
         </button>
       </div>
 

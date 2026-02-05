@@ -16,7 +16,7 @@ export const OpenImageButton = ({ imageUrl, onClick, ...props }) => {
     <button
       type="button"
       title="Open in new tab"
-      style=${{ backgroundImage: `url("/images/open.svg")` }}
+      style=${{ backgroundImage: `url("../images/open.svg")` }}
       onClick=${(e) => {
         chrome.tabs.create({ url: imageUrl, active: false });
         onClick?.(e);
@@ -31,7 +31,7 @@ export const DownloadImageButton = ({ imageUrl, onClick, ...props }) => {
     <button
       type="button"
       title="Download"
-      style=${{ backgroundImage: `url("/images/download.svg")` }}
+      style=${{ backgroundImage: `url("../images/download.svg")` }}
       onClick=${(e) => {
         chrome.downloads.download({ url: imageUrl });
         onClick?.(e);
