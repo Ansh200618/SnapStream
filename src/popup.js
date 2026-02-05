@@ -188,10 +188,27 @@ const Popup = () => {
 
   const currentImageNumberRef = useRef(1);
   
+  // Valid image extensions constant
+  const VALID_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'jfif'];
+  
+  // Format indicator to extension mapping
+  const FORMAT_INDICATORS = {
+    '/jpeg': 'jpg',
+    'format=jpeg': 'jpg',
+    'format=jpg': 'jpg',
+    '/png': 'png',
+    'format=png': 'png',
+    '/webp': 'webp',
+    'format=webp': 'webp',
+    '/gif': 'gif',
+    'format=gif': 'gif',
+  };
+  
   // Helper function to extract proper image extension
   const getImageExtension = useCallback((filename, imageUrl) => {
     const regex = /(?:\.([^.]+))?$/;
-    let extension = regex.exec(filename)[1];
+    const match = regex.exec(filename);
+    let extension = match ? match[1] : undefined;
     
     // Fix for HTM issue: If extension is htm/html/undefined or not a valid image extension,
     // try to extract the correct extension from the original image URL
@@ -205,24 +222,16 @@ const Popup = () => {
       if (urlExtensionMatch && urlExtensionMatch[1]) {
         const urlExtension = urlExtensionMatch[1].toLowerCase();
         // Check if it's a valid image extension
-        const validImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'jfif'];
-        if (validImageExtensions.includes(urlExtension)) {
+        if (VALID_IMAGE_EXTENSIONS.includes(urlExtension)) {
           return urlExtension;
         }
       }
       
       // Check if URL contains image format indicators (for URLs without extensions)
-      if (imageUrl.includes('/jpeg') || imageUrl.includes('format=jpeg') || imageUrl.includes('format=jpg')) {
-        return 'jpg';
-      }
-      if (imageUrl.includes('/png') || imageUrl.includes('format=png')) {
-        return 'png';
-      }
-      if (imageUrl.includes('/webp') || imageUrl.includes('format=webp')) {
-        return 'webp';
-      }
-      if (imageUrl.includes('/gif') || imageUrl.includes('format=gif')) {
-        return 'gif';
+      for (const [indicator, ext] of Object.entries(FORMAT_INDICATORS)) {
+        if (imageUrl.includes(indicator)) {
+          return ext;
+        }
       }
       
       // If still no valid extension found, default to jpg (most common format)
