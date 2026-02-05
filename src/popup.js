@@ -28,6 +28,34 @@ const Popup = () => {
   const [linkedImages, setLinkedImages] = useState([]);
   const [selectedImages, setSelectedImages] = useState([]);
   const [visibleImages, setVisibleImages] = useState([]);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+
+  const loadImages = useCallback(() => {
+    setIsLoadingImages(true);
+    // Get images on the page
+    chrome.windows.getCurrent((currentWindow) => {
+      chrome.tabs.query(
+        { active: true, windowId: currentWindow.id },
+        (activeTabs) => {
+          chrome.tabs.executeScript(activeTabs[0].id, {
+            file: '/src/sendImages.js',
+            allFrames: true,
+          }, () => {
+            setIsLoadingImages(false);
+          });
+        }
+      );
+    });
+  }, []);
+
+  const refreshImages = useCallback(() => {
+    // Clear existing images and reload
+    setAllImages([]);
+    setLinkedImages([]);
+    setSelectedImages([]);
+    loadImages();
+  }, [loadImages]);
+
   useEffect(() => {
     const setMessageResult = (result) => {
       setAllImages((allImages) => unique([...allImages, ...result.allImages]));
@@ -43,23 +71,13 @@ const Popup = () => {
     // `sendImages.js` is injected into all frames of the active tab, so this listener may be called multiple times.
     chrome.runtime.onMessage.addListener(setMessageResult);
 
-    // Get images on the page
-    chrome.windows.getCurrent((currentWindow) => {
-      chrome.tabs.query(
-        { active: true, windowId: currentWindow.id },
-        (activeTabs) => {
-          chrome.tabs.executeScript(activeTabs[0].id, {
-            file: '/src/sendImages.js',
-            allFrames: true,
-          });
-        }
-      );
-    });
+    // Initial load
+    loadImages();
 
     return () => {
       chrome.runtime.onMessage.removeListener(setMessageResult);
     };
-  }, []);
+  }, [loadImages]);
 
   const imagesCacheRef = useRef(null); // Not displayed; only used for filtering by natural width / height
   const filterImages = useDebouncedCallback(
@@ -238,6 +256,15 @@ const Popup = () => {
           }}
         >
           <img class="toggle" src="/images/times.svg" />
+        </button>
+
+        <button
+          id="refresh_images_button"
+          title="Refresh images"
+          disabled=${isLoadingImages}
+          onClick=${refreshImages}
+        >
+          <img src="/images/refresh.svg" />
         </button>
 
         <button
