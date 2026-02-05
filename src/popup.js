@@ -40,8 +40,6 @@ const Popup = () => {
           chrome.tabs.executeScript(activeTabs[0].id, {
             file: '/src/sendImages.js',
             allFrames: true,
-          }, () => {
-            setIsLoadingImages(false);
           });
         }
       );
@@ -65,6 +63,9 @@ const Popup = () => {
       );
 
       localStorage.active_tab_origin = result.origin;
+      
+      // Set loading to false when we receive images
+      setIsLoadingImages(false);
     };
 
     // Add images to state and trigger filtration.
@@ -77,7 +78,8 @@ const Popup = () => {
     return () => {
       chrome.runtime.onMessage.removeListener(setMessageResult);
     };
-  }, [loadImages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const imagesCacheRef = useRef(null); // Not displayed; only used for filtering by natural width / height
   const filterImages = useDebouncedCallback(
