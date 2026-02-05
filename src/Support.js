@@ -44,7 +44,7 @@ export const SupportList = () => html`
   <p>
     The source code can be found on GitHub:${' '}
     <${ExternalLink}
-      href="https://github.com/PactInteractive/image-downloader"
+      href="https://github.com/Ansh200618/SnapStream"
     />
   </p>
 `;

@@ -17,7 +17,7 @@ In order to extract images from a web page, Image Downloader needs to be able to
 
 We do not modify, store, send, or sell your data in any way!
 The source code is available for everyone to see here:
-https://github.com/PactInteractive/image-downloader
+https://github.com/Ansh200618/SnapStream
 
 💭 Why did this extension download smaller images than I expected? Why did it miss some images?
 Image Downloader can only extract the images currently visible on the page. Those may sometimes be smaller thumbnails of the full-resolution images you'd expect to see when you click on a photo (e.g. in Facebook albums). In addition, some websites like Instagram have carousels with multiple images, but only load a few at a time to save bandwidth.
@@ -65,7 +65,7 @@ We're looking into adding such capabilities to Image Downloader in the future. I
 - Workaround for Chrome disallowing access to cross-domain CSS rules
 
 2.4.1:
-- Fixed an issue where invalid URLs would break the extension - https://github.com/PactInteractive/image-downloader/issues/23
+- Fixed an issue where invalid URLs would break the extension - https://github.com/Ansh200618/SnapStream/issues/23
 - Updated Zepto.js to 1.2.0
 
 2.4.0:
