@@ -45,7 +45,23 @@
 ### For Users (Chrome Web Store)
 *Coming Soon*
 
-### For Developers (Local Installation)
+### For Users (Quick Install - No Build Required)
+
+1. **Download the repository**
+   - Click the green "Code" button on GitHub
+   - Select "Download ZIP"
+   - Extract the ZIP file to a folder on your computer
+
+2. **Load in Chrome/Edge**
+   - Open `chrome://extensions` in your browser
+   - Enable **Developer mode** (toggle in top right)
+   - Click **Load unpacked**
+   - Select the extracted SnapStream folder (the root directory containing manifest.json)
+   - The SnapStream icon will appear in your extensions toolbar!
+
+**Note:** After installation, the extension will automatically open the GitHub repository page to welcome you!
+
+### For Developers (Local Installation with Build)
 
 1. **Clone the repository**
    ```bash
@@ -70,7 +86,7 @@
    - Select the `build/` folder from the project directory
    - The SnapStream icon will appear in your extensions toolbar!
 
-**Note:** After installation, the extension will automatically open the GitHub repository page to welcome you!
+**Note:** Building is recommended for development as it includes additional checks and optimizations.
 
 ## 💻 Development
 
