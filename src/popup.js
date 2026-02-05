@@ -187,6 +187,51 @@ const Popup = () => {
   }
 
   const currentImageNumberRef = useRef(1);
+  
+  // Helper function to extract proper image extension
+  const getImageExtension = useCallback((filename, imageUrl) => {
+    const regex = /(?:\.([^.]+))?$/;
+    let extension = regex.exec(filename)[1];
+    
+    // Fix for HTM issue: If extension is htm/html/undefined or not a valid image extension,
+    // try to extract the correct extension from the original image URL
+    const needsExtensionFix = !extension || 
+      extension.toLowerCase() === 'htm' || 
+      extension.toLowerCase() === 'html';
+    
+    if (needsExtensionFix) {
+      // Try to get extension from the original image URL
+      const urlExtensionMatch = imageUrl.match(/\.([a-z0-9]+)(?:[?#]|$)/i);
+      if (urlExtensionMatch && urlExtensionMatch[1]) {
+        const urlExtension = urlExtensionMatch[1].toLowerCase();
+        // Check if it's a valid image extension
+        const validImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'jfif'];
+        if (validImageExtensions.includes(urlExtension)) {
+          return urlExtension;
+        }
+      }
+      
+      // Check if URL contains image format indicators (for URLs without extensions)
+      if (imageUrl.includes('/jpeg') || imageUrl.includes('format=jpeg') || imageUrl.includes('format=jpg')) {
+        return 'jpg';
+      }
+      if (imageUrl.includes('/png') || imageUrl.includes('format=png')) {
+        return 'png';
+      }
+      if (imageUrl.includes('/webp') || imageUrl.includes('format=webp')) {
+        return 'webp';
+      }
+      if (imageUrl.includes('/gif') || imageUrl.includes('format=gif')) {
+        return 'gif';
+      }
+      
+      // If still no valid extension found, default to jpg (most common format)
+      return 'jpg';
+    }
+    
+    return extension;
+  }, []);
+  
   const suggestNewFilename = useCallback(
     (item, suggest) => {
       let newFilename = '';
@@ -194,8 +239,9 @@ const Popup = () => {
         newFilename += `${options.folder_name}/`;
       }
       if (options.new_file_name) {
-        const regex = /(?:\.([^.]+))?$/;
-        const extension = regex.exec(item.filename)[1];
+        const imageUrl = imagesToDownload[currentImageNumberRef.current - 1];
+        const extension = getImageExtension(item.filename, imageUrl);
+        
         if (imagesToDownload.length === 1) {
           newFilename += `${options.new_file_name}.${extension}`;
         } else {
@@ -212,7 +258,7 @@ const Popup = () => {
       }
       suggest({ filename: newFilename });
     },
-    [imagesToDownload, options.folder_name, options.new_file_name]
+    [imagesToDownload, options.folder_name, options.new_file_name, getImageExtension]
   );
 
   useEffect(() => {

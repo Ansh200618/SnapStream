@@ -89,7 +89,38 @@ export const Images = ({
                 minWidth: `${options.image_min_width}px`,
                 maxWidth: `${options.image_max_width}px`,
               }}
+              onError=${(e) => {
+                // Add error handling for broken images
+                e.currentTarget.style.display = 'none';
+                const errorDiv = e.currentTarget.nextElementSibling;
+                if (errorDiv && errorDiv.classList.contains('image-error')) {
+                  errorDiv.style.display = 'flex';
+                }
+              }}
+              onLoad=${(e) => {
+                // Ensure error message is hidden when image loads successfully
+                const errorDiv = e.currentTarget.nextElementSibling;
+                if (errorDiv && errorDiv.classList.contains('image-error')) {
+                  errorDiv.style.display = 'none';
+                }
+              }}
             />
+            
+            <div class="image-error" style=${{
+              display: 'none',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: `${options.image_max_width}px`,
+              backgroundColor: '#f0f0f0',
+              color: '#666',
+              padding: '10px',
+              textAlign: 'center',
+              fontSize: '12px',
+            }}>
+              <div style=${{ fontSize: '24px', marginBottom: '5px' }}>⚠️</div>
+              <div>Failed to load image</div>
+            </div>
 
             <div class="checkbox"></div>
 
