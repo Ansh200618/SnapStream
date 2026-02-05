@@ -243,28 +243,37 @@ const Popup = () => {
   
   const suggestNewFilename = useCallback(
     (item, suggest) => {
+      const imageUrl = imagesToDownload[currentImageNumberRef.current - 1];
+      const correctedExtension = getImageExtension(item.filename, imageUrl);
+      
       let newFilename = '';
       if (options.folder_name) {
         newFilename += `${options.folder_name}/`;
       }
+      
       if (options.new_file_name) {
-        const imageUrl = imagesToDownload[currentImageNumberRef.current - 1];
-        const extension = getImageExtension(item.filename, imageUrl);
-        
+        // User provided a custom filename
         if (imagesToDownload.length === 1) {
-          newFilename += `${options.new_file_name}.${extension}`;
+          newFilename += `${options.new_file_name}.${correctedExtension}`;
         } else {
           const numberOfDigits = imagesToDownload.length.toString().length;
           const formattedImageNumber = `${currentImageNumberRef.current}`.padStart(
             numberOfDigits,
             '0'
           );
-          newFilename += `${options.new_file_name}${formattedImageNumber}.${extension}`;
-          currentImageNumberRef.current += 1;
+          newFilename += `${options.new_file_name}${formattedImageNumber}.${correctedExtension}`;
         }
       } else {
-        newFilename += item.filename;
+        // No custom filename - use original but fix the extension if needed
+        const baseFilename = item.filename.replace(/\.[^.]+$/, ''); // Remove existing extension
+        newFilename += `${baseFilename}.${correctedExtension}`;
       }
+      
+      // Increment counter for next download (only when downloading multiple with custom name)
+      if (options.new_file_name && imagesToDownload.length > 1) {
+        currentImageNumberRef.current += 1;
+      }
+      
       suggest({ filename: newFilename });
     },
     [imagesToDownload, options.folder_name, options.new_file_name, getImageExtension]
