@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src https: http:;">
+    <title>SnapStream Desktop</title>
+    <link rel="stylesheet" href="main.css" type="text/css" />
+    <link rel="stylesheet" href="lib/nouislider.min.css" type="text/css" />
+    <style>
+        html,
+        body {
+            overflow: hidden;
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Browser Controls */
+        .browser-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .navigation-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .nav-btn, .toolbar-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .nav-btn:hover, .toolbar-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .nav-btn:active, .toolbar-btn:active {
+            transform: translateY(0);
+        }
+
+        .url-bar-container {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+        }
+
+        .url-bar {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.95);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .go-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toolbar-btn.active {
+            background: rgba(76, 175, 80, 0.4);
+        }
+
+        .toolbar-btn.disabled {
+            background: rgba(244, 67, 54, 0.4);
+        }
+
+        /* Main Container */
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Browser View */
+        .browser-view {
+            flex: 1;
+            background: white;
+            position: relative;
+        }
+
+        /* SnapStream Panel */
+        .snapstream-panel {
+            width: 450px;
+            background: linear-gradient(135deg, hsl(260, 80%, 65%) 0%, hsl(260, 80%, 55%) 100%);
+            border-left: 2px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .snapstream-panel.hidden {
+            display: none;
+        }
+
+        .panel-header {
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header h2 {
+            margin: 0;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .close-panel-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .close-panel-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Main Content in Panel */
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        #filters_container {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+        }
+
+        #images_container {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            gap: var(--images-container-gap);
+            padding: var(--images-container-padding);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        #downloads_container {
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.25);
+        }
+
+        .grid {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4px 0;
+        }
+
+        .grid td {
+            padding: 2px;
+        }
+
+        #toggle_advanced_filters_button,
+        #refresh_images_button,
+        #open_options_button {
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 30px;
+            height: 30px;
+            border-radius: var(--border-radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            transition: var(--transition-transform), var(--transition-background);
+        }
+
+        #toggle_advanced_filters_button:hover,
+        #refresh_images_button:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        #toggle_advanced_filters_button .toggle {
+            height: 20px;
+            transition: var(--transition-transform);
+        }
+
+        #toggle_advanced_filters_button.collapsed .toggle {
+            transform: rotate(-135deg);
+        }
+
+        #refresh_images_button img {
+            height: 18px;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            padding: 6px 12px;
+            background: #0f1419;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 11px;
+            color: #888;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Browser Controls -->
+    <div class="browser-controls">
+        <div class="navigation-buttons">
+            <button id="back-btn" class="nav-btn" title="Go Back">←</button>
+            <button id="forward-btn" class="nav-btn" title="Go Forward">→</button>
+            <button id="reload-btn" class="nav-btn" title="Reload">⟳</button>
+        </div>
+        <div class="url-bar-container">
+            <input type="text" id="url-input" class="url-bar" placeholder="Enter URL or search..." value="https://www.google.com">
+            <button id="go-btn" class="go-btn">Go</button>
+        </div>
+        <button id="adblocker-btn" class="toolbar-btn" title="Ad Blocker (Enabled)">🛡️</button>
+        <button id="show-images-btn" class="toolbar-btn" title="Show SnapStream Panel">📸</button>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Inbuilt Browser -->
+        <div class="browser-view" id="browser-view">
+            <webview 
+                id="webview" 
+                src="https://www.google.com"
+                style="width: 100%; height: 100%;"
+                partition="persist:snapstream"
+                webpreferences="javascript=yes"
+                allowpopups
+            ></webview>
+        </div>
+
+        <!-- SnapStream Panel with Original UI -->
+        <div class="snapstream-panel hidden" id="snapstream-panel">
+            <div class="panel-header">
+                <h2>SnapStream</h2>
+                <button class="close-panel-btn" id="close-panel-btn">×</button>
+            </div>
+            <div class="panel-content">
+                <main></main>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <span id="status-text">Ready</span>
+    </div>
+
+    <script src="lib/jquery-3.5.1.min.js"></script>
+    <script src="lib/nouislider.min.js"></script>
+    <script src="src/defaults.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
