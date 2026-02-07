@@ -1,4 +1,4 @@
-// Enhanced Browser App with Full Features - Main focus on Image Downloader
+// Main App Script - Combines browser navigation with SnapStream UI
 import html, {
   render,
   useCallback,
@@ -16,17 +16,8 @@ import { DownloadConfirmation } from './src/DownloadConfirmation.js';
 import { Images } from './src/Images.js';
 import { UrlFilterMode } from './src/UrlFilterMode.js';
 
-// Global state
-let tabs = [];
-let currentTabIndex = 0;
+let webview;
 let adBlockerEnabled = true;
-let bookmarks = JSON.parse(localStorage.getItem('bookmarks') || '[]');
-let history = JSON.parse(localStorage.getItem('history') || '[]');
-let settings = JSON.parse(localStorage.getItem('settings') || JSON.stringify({
-    homePage: 'https://www.google.com',
-    autoDetectImages: true,
-    showImageBadge: true
-}));
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -34,159 +25,43 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeApp() {
-    console.log('Initializing SnapStream Browser...');
-    
-    // Initialize first tab
-    createTab('https://www.google.com');
+    webview = document.getElementById('webview');
     
     // Set up event listeners
     setupNavigationControls();
-    setupToolbarActions();
+    setupWebviewEvents();
     setupAdBlocker();
     setupSnapStreamPanel();
-    setupKeyboardShortcuts();
-    setupSettings();
     
     updateStatus('Ready');
 }
-
-// Tab Management
-function createTab(url = 'https://www.google.com') {
-    const tabId = 'tab-' + Date.now();
-    const tab = {
-        id: tabId,
-        url: url,
-        title: 'New Tab',
-        favicon: '🌐',
-        webview: null
-    };
-    
-    tabs.push(tab);
-    currentTabIndex = tabs.length - 1;
-    
-    renderTabs();
-    switchToTab(currentTabIndex);
-}
-
-function renderTabs() {
-    const container = document.getElementById('tabs-container');
-    container.innerHTML = '';
-    
-    tabs.forEach((tab, index) => {
-        const tabEl = document.createElement('div');
-        tabEl.className = 'tab' + (index === currentTabIndex ? ' active' : '');
-        tabEl.innerHTML = `
-            <span class="tab-favicon">${tab.favicon}</span>
-            <span class="tab-title">${tab.title}</span>
-            <button class="tab-close" onclick="closeTab(${index})" title="Close tab">×</button>
-        `;
-        tabEl.onclick = (e) => {
-            if (!e.target.classList.contains('tab-close')) {
-                switchToTab(index);
-            }
-        };
-        container.appendChild(tabEl);
-    });
-}
-
-function switchToTab(index) {
-    if (index < 0 || index >= tabs.length) return;
-    
-    currentTabIndex = index;
-    const tab = tabs[index];
-    
-    // Hide all webviews
-    const browserView = document.getElementById('browser-view');
-    Array.from(browserView.querySelectorAll('webview')).forEach(wv => {
-        wv.style.display = 'none';
-    });
-    
-    // Show current webview or create it
-    if (!tab.webview) {
-        const webview = document.createElement('webview');
-        webview.id = tab.id;
-        webview.src = tab.url;
-        webview.style.width = '100%';
-        webview.style.height = '100%';
-        webview.setAttribute('partition', 'persist:snapstream');
-        webview.setAttribute('webpreferences', 'javascript=yes');
-        webview.setAttribute('allowpopups', '');
-        
-        browserView.appendChild(webview);
-        tab.webview = webview;
-        
-        setupWebviewEvents(webview, index);
-    } else {
-        tab.webview.style.display = 'block';
-    }
-    
-    // Update URL bar
-    document.getElementById('url-input').value = tab.url;
-    
-    // Update navigation buttons
-    updateNavigationButtons();
-    
-    renderTabs();
-}
-
-window.closeTab = function(index) {
-    if (tabs.length === 1) {
-        // Don't close last tab, just navigate to home
-        tabs[0].url = settings.homePage;
-        if (tabs[0].webview) {
-            tabs[0].webview.src = settings.homePage;
-        }
-        return;
-    }
-    
-    // Remove webview
-    if (tabs[index].webview) {
-        tabs[index].webview.remove();
-    }
-    
-    tabs.splice(index, 1);
-    
-    // Adjust current tab index
-    if (currentTabIndex >= tabs.length) {
-        currentTabIndex = tabs.length - 1;
-    }
-    
-    renderTabs();
-    switchToTab(currentTabIndex);
-};
 
 // Navigation Controls
 function setupNavigationControls() {
     const backBtn = document.getElementById('back-btn');
     const forwardBtn = document.getElementById('forward-btn');
     const reloadBtn = document.getElementById('reload-btn');
-    const homeBtn = document.getElementById('home-btn');
     const urlInput = document.getElementById('url-input');
-    const newTabBtn = document.getElementById('new-tab-btn');
+    const goBtn = document.getElementById('go-btn');
     
     backBtn.addEventListener('click', () => {
-        const webview = getCurrentWebview();
-        if (webview && webview.canGoBack()) {
+        if (webview.canGoBack()) {
             webview.goBack();
         }
     });
     
     forwardBtn.addEventListener('click', () => {
-        const webview = getCurrentWebview();
-        if (webview && webview.canGoForward()) {
+        if (webview.canGoForward()) {
             webview.goForward();
         }
     });
     
     reloadBtn.addEventListener('click', () => {
-        const webview = getCurrentWebview();
-        if (webview) {
-            webview.reload();
-        }
+        webview.reload();
     });
     
-    homeBtn.addEventListener('click', () => {
-        navigateToUrl(settings.homePage);
+    goBtn.addEventListener('click', () => {
+        navigateToUrl(urlInput.value);
     });
     
     urlInput.addEventListener('keypress', (e) => {
@@ -194,23 +69,9 @@ function setupNavigationControls() {
             navigateToUrl(urlInput.value);
         }
     });
-    
-    urlInput.addEventListener('focus', () => {
-        urlInput.select();
-    });
-    
-    newTabBtn.addEventListener('click', () => {
-        createTab(settings.homePage);
-    });
-}
-
-function getCurrentWebview() {
-    return tabs[currentTabIndex]?.webview;
 }
 
 function navigateToUrl(url) {
-    if (!url) return;
-    
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
         if (url.includes('.') && !url.includes(' ')) {
             url = 'https://' + url;
@@ -219,217 +80,35 @@ function navigateToUrl(url) {
         }
     }
     
-    const webview = getCurrentWebview();
-    if (webview) {
-        webview.src = url;
-        tabs[currentTabIndex].url = url;
-    }
-    
+    webview.src = url;
     updateStatus('Loading...');
 }
 
-function updateNavigationButtons() {
-    const webview = getCurrentWebview();
-    const backBtn = document.getElementById('back-btn');
-    const forwardBtn = document.getElementById('forward-btn');
-    
-    if (webview) {
-        backBtn.disabled = !webview.canGoBack();
-        forwardBtn.disabled = !webview.canGoForward();
-    } else {
-        backBtn.disabled = true;
-        forwardBtn.disabled = true;
-    }
-}
-
 // Webview Events
-function setupWebviewEvents(webview, tabIndex) {
+function setupWebviewEvents() {
     webview.addEventListener('did-start-loading', () => {
-        if (tabIndex === currentTabIndex) {
-            updateStatus('Loading...');
-        }
+        updateStatus('Loading...');
     });
     
     webview.addEventListener('did-stop-loading', () => {
+        updateStatus('Page loaded');
         const url = webview.getURL();
-        tabs[tabIndex].url = url;
-        
-        if (tabIndex === currentTabIndex) {
-            updateStatus('Page loaded');
-            document.getElementById('url-input').value = url;
-            updateNavigationButtons();
-        }
-        
-        // Add to history
-        addToHistory(url, tabs[tabIndex].title);
-        
-        // Auto-detect images if enabled
-        if (settings.autoDetectImages) {
-            autoDetectImages(webview);
-        }
-    });
-    
-    webview.addEventListener('page-title-updated', (event) => {
-        tabs[tabIndex].title = event.title || 'Untitled';
-        tabs[tabIndex].favicon = '🌐';
-        renderTabs();
+        document.getElementById('url-input').value = url;
     });
     
     webview.addEventListener('did-fail-load', (event) => {
-        if (event.errorCode !== -3 && tabIndex === currentTabIndex) {
+        if (event.errorCode !== -3) {
             updateStatus('Failed to load page');
         }
     });
     
     webview.addEventListener('new-window', (event) => {
         event.preventDefault();
-        createTab(event.url);
+        webview.src = event.url;
     });
 }
 
-// Toolbar Actions
-function setupToolbarActions() {
-    const bookmarkBtn = document.getElementById('bookmark-btn');
-    const bookmarksBtn = document.getElementById('bookmarks-btn');
-    const historyBtn = document.getElementById('history-btn');
-    const downloadsBtn = document.getElementById('downloads-btn');
-    const settingsBtn = document.getElementById('settings-btn');
-    
-    bookmarkBtn.addEventListener('click', toggleBookmark);
-    bookmarksBtn.addEventListener('click', () => togglePanel('bookmarks-panel'));
-    historyBtn.addEventListener('click', () => togglePanel('history-panel'));
-    downloadsBtn.addEventListener('click', () => togglePanel('downloads-panel'));
-    settingsBtn.addEventListener('click', () => togglePanel('settings-panel'));
-    
-    // Check if current page is bookmarked
-    setInterval(() => {
-        const currentUrl = tabs[currentTabIndex]?.url;
-        const isBookmarked = bookmarks.some(b => b.url === currentUrl);
-        bookmarkBtn.classList.toggle('bookmarked', isBookmarked);
-    }, 500);
-}
-
-function toggleBookmark() {
-    const tab = tabs[currentTabIndex];
-    if (!tab) return;
-    
-    const existingIndex = bookmarks.findIndex(b => b.url === tab.url);
-    
-    if (existingIndex >= 0) {
-        // Remove bookmark
-        bookmarks.splice(existingIndex, 1);
-        updateStatus('Bookmark removed');
-    } else {
-        // Add bookmark
-        bookmarks.push({
-            url: tab.url,
-            title: tab.title,
-            favicon: tab.favicon,
-            date: new Date().toISOString()
-        });
-        updateStatus('Bookmark added');
-    }
-    
-    localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
-    renderBookmarks();
-}
-
-function renderBookmarks() {
-    const container = document.getElementById('bookmarks-content');
-    
-    if (bookmarks.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">📚</div>
-                <p>No bookmarks yet</p>
-                <p style="font-size: 12px; color: #666;">Press Ctrl+D to bookmark current page</p>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = bookmarks.map((bookmark, index) => `
-        <div class="bookmark-item" onclick="navigateToUrl('${bookmark.url}')">
-            <div class="item-title">${bookmark.favicon} ${bookmark.title}</div>
-            <div class="item-url">${bookmark.url}</div>
-            <button style="float: right; margin-top: -30px; padding: 4px 8px; background: rgba(255,0,0,0.3); border: none; border-radius: 4px; color: white; cursor: pointer;" onclick="event.stopPropagation(); removeBookmark(${index})">Delete</button>
-        </div>
-    `).join('');
-}
-
-window.removeBookmark = function(index) {
-    bookmarks.splice(index, 1);
-    localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
-    renderBookmarks();
-};
-
-function addToHistory(url, title) {
-    // Don't add duplicate recent entries
-    const recentIndex = history.findIndex((h, i) => i < 10 && h.url === url);
-    if (recentIndex >= 0) {
-        history.splice(recentIndex, 1);
-    }
-    
-    history.unshift({
-        url: url,
-        title: title || 'Untitled',
-        date: new Date().toISOString()
-    });
-    
-    // Keep only last 100 entries
-    if (history.length > 100) {
-        history = history.slice(0, 100);
-    }
-    
-    localStorage.setItem('history', JSON.stringify(history));
-    renderHistory();
-}
-
-function renderHistory() {
-    const container = document.getElementById('history-content');
-    
-    if (history.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">🕐</div>
-                <p>No history yet</p>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = history.map(item => `
-        <div class="history-item" onclick="navigateToUrl('${item.url}')">
-            <div class="item-title">${item.title}</div>
-            <div class="item-url">${item.url}</div>
-            <div class="item-time">${new Date(item.date).toLocaleString()}</div>
-        </div>
-    `).join('');
-}
-
-function togglePanel(panelId) {
-    // Close all panels first
-    document.querySelectorAll('.side-panel').forEach(panel => {
-        panel.classList.remove('open');
-    });
-    
-    // Close SnapStream panel if open
-    document.getElementById('snapstream-panel').classList.add('hidden');
-    
-    // Open requested panel
-    const panel = document.getElementById(panelId);
-    panel.classList.add('open');
-    
-    // Render content
-    if (panelId === 'bookmarks-panel') renderBookmarks();
-    if (panelId === 'history-panel') renderHistory();
-}
-
-window.closePanel = function(panelId) {
-    document.getElementById(panelId).classList.remove('open');
-};
-
-// Ad Blocker
+// Ad Blocker Controls
 function setupAdBlocker() {
     const adBlockerBtn = document.getElementById('adblocker-btn');
     
@@ -442,9 +121,7 @@ function setupAdBlocker() {
         if (result.success) {
             updateAdBlockerButton();
             updateStatus(adBlockerEnabled ? 'Ad blocker enabled' : 'Ad blocker disabled');
-            // Reload current tab
-            const webview = getCurrentWebview();
-            if (webview) webview.reload();
+            webview.reload();
         } else {
             updateStatus('Failed to toggle ad blocker');
         }
@@ -474,18 +151,14 @@ function updateAdBlockerButton() {
     }
 }
 
-// SnapStream Panel
+// SnapStream Panel Controls
 function setupSnapStreamPanel() {
     const showImagesBtn = document.getElementById('show-images-btn');
     const closePanelBtn = document.getElementById('close-panel-btn');
     
     showImagesBtn.addEventListener('click', () => {
-        // Close side panels
-        document.querySelectorAll('.side-panel').forEach(panel => {
-            panel.classList.remove('open');
-        });
-        
         toggleSnapStreamPanel(true);
+        // Initialize SnapStream UI
         initializeSnapStreamUI();
     });
     
@@ -503,37 +176,8 @@ function toggleSnapStreamPanel(show) {
     }
 }
 
-function autoDetectImages(webview) {
-    if (!settings.autoDetectImages) return;
-    
-    setTimeout(async () => {
-        try {
-            const result = await webview.executeJavaScript(`
-                (function() {
-                    const images = document.querySelectorAll('img');
-                    return images.length;
-                })();
-            `);
-            
-            if (result > 0 && settings.showImageBadge) {
-                const btn = document.getElementById('show-images-btn');
-                // Could add a badge here
-                console.log(`Found ${result} images on page`);
-            }
-        } catch (error) {
-            console.error('Error detecting images:', error);
-        }
-    }, 2000);
-}
-
 // Initialize SnapStream UI (React-based from original extension)
 function initializeSnapStreamUI() {
-    const webview = getCurrentWebview();
-    if (!webview) {
-        updateStatus('No active tab');
-        return;
-    }
-    
     const initialOptions = localStorage;
 
     const Popup = () => {
@@ -554,16 +198,19 @@ function initializeSnapStreamUI() {
             updateStatus('Detecting images...');
             
             try {
+                // Execute script in webview to extract images
                 const result = await webview.executeJavaScript(`
                     (function() {
                         const images = [];
                         const linkedImages = [];
                         
+                        // Get images from img tags
                         document.querySelectorAll('img').forEach(img => {
                             if (img.src && (img.src.startsWith('http') || img.src.startsWith('data:'))) {
                                 images.push(img.src);
                             }
                             
+                            // Check srcset
                             if (img.srcset) {
                                 const srcsetUrls = img.srcset.split(',').map(s => s.trim().split(' ')[0]);
                                 srcsetUrls.forEach(url => {
@@ -574,6 +221,7 @@ function initializeSnapStreamUI() {
                             }
                         });
                         
+                        // Get background images from CSS
                         document.querySelectorAll('*').forEach(el => {
                             const style = window.getComputedStyle(el);
                             const bgImage = style.backgroundImage;
@@ -590,6 +238,7 @@ function initializeSnapStreamUI() {
                             }
                         });
                         
+                        // Get linked images
                         document.querySelectorAll('a').forEach(link => {
                             const href = link.href;
                             if (href && /\\.(jpg|jpeg|png|gif|webp|bmp|svg)($|\\?)/i.test(href)) {
@@ -686,7 +335,7 @@ function initializeSnapStreamUI() {
                             `img[src="${encodeURI(url)}"]`
                         );
 
-                        if (!image) return true;
+                        if (!image) return true; // Include if not yet loaded
 
                         return (
                             (options.filter_min_width_enabled !== 'true' ||
@@ -735,6 +384,8 @@ function initializeSnapStreamUI() {
             
             if (result.success && result.directory) {
                 updateStatus(`Downloading ${imagesToDownload.length} images...`);
+                // Note: Actual download implementation would go here
+                console.log(`Would download ${imagesToDownload.length} images to ${result.directory}`);
             }
 
             setDownloadIsInProgress(false);
@@ -776,7 +427,7 @@ function initializeSnapStreamUI() {
                             }));
                         }}
                     >
-                        <img class="toggle" src="images/times.svg" />
+                        <img class="toggle" src="../../images/times.svg" />
                     </button>
 
                     <button
@@ -785,7 +436,7 @@ function initializeSnapStreamUI() {
                         disabled=${isLoadingImages}
                         onClick=${refreshImages}
                     >
-                        <img src="images/refresh.svg" />
+                        <img src="../../images/refresh.svg" />
                     </button>
                 </div>
 
@@ -836,81 +487,8 @@ function initializeSnapStreamUI() {
         `;
     };
 
+    // Render the SnapStream UI
     render(html`<${Popup} />`, document.querySelector('main'));
-}
-
-// Settings
-function setupSettings() {
-    const homePageInput = document.getElementById('home-page-input');
-    const autoDetectCheckbox = document.getElementById('auto-detect-images');
-    const showBadgeCheckbox = document.getElementById('show-image-badge');
-    
-    homePageInput.value = settings.homePage;
-    autoDetectCheckbox.checked = settings.autoDetectImages;
-    showBadgeCheckbox.checked = settings.showImageBadge;
-    
-    homePageInput.addEventListener('change', () => {
-        settings.homePage = homePageInput.value;
-        localStorage.setItem('settings', JSON.stringify(settings));
-    });
-    
-    autoDetectCheckbox.addEventListener('change', () => {
-        settings.autoDetectImages = autoDetectCheckbox.checked;
-        localStorage.setItem('settings', JSON.stringify(settings));
-    });
-    
-    showBadgeCheckbox.addEventListener('change', () => {
-        settings.showImageBadge = showBadgeCheckbox.checked;
-        localStorage.setItem('settings', JSON.stringify(settings));
-    });
-}
-
-// Keyboard Shortcuts
-function setupKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
-        // Ctrl/Cmd + T: New tab
-        if ((e.ctrlKey || e.metaKey) && e.key === 't') {
-            e.preventDefault();
-            createTab(settings.homePage);
-        }
-        
-        // Ctrl/Cmd + W: Close tab
-        if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
-            e.preventDefault();
-            window.closeTab(currentTabIndex);
-        }
-        
-        // Ctrl/Cmd + Tab: Next tab
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Tab') {
-            e.preventDefault();
-            const nextIndex = (currentTabIndex + 1) % tabs.length;
-            switchToTab(nextIndex);
-        }
-        
-        // Ctrl/Cmd + D: Bookmark
-        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
-            e.preventDefault();
-            toggleBookmark();
-        }
-        
-        // Ctrl/Cmd + H: History
-        if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
-            e.preventDefault();
-            togglePanel('history-panel');
-        }
-        
-        // Ctrl/Cmd + Shift + B: Bookmarks
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
-            e.preventDefault();
-            togglePanel('bookmarks-panel');
-        }
-        
-        // Ctrl/Cmd + L: Focus URL bar
-        if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
-            e.preventDefault();
-            document.getElementById('url-input').focus();
-        }
-    });
 }
 
 // Utility Functions
@@ -921,6 +499,7 @@ function updateStatus(text) {
 // Handle new tab from menu
 if (window.electronAPI) {
     window.electronAPI.onNewTab(() => {
-        createTab(settings.homePage);
+        document.getElementById('url-input').value = 'https://www.google.com';
+        webview.src = 'https://www.google.com';
     });
 }
