@@ -42,6 +42,26 @@
 
 ## 🚀 Installation
 
+### Desktop Application (NEW! 🎉)
+
+SnapStream now has a standalone **desktop application** with an inbuilt browser and ad blocker!
+
+**Features:**
+- ✅ Inbuilt web browser (no Chrome/Edge needed)
+- ✅ Built-in ad blocker powered by @cliqz/adblocker-electron (like uBlock Origin)
+- ✅ Same beautiful UI as the extension
+- ✅ All image detection and download features
+- ✅ Cross-platform (Windows, macOS, Linux)
+
+**Quick Start:**
+```bash
+cd apps/snapstream-app
+npm install
+npm start
+```
+
+[View Desktop App Documentation →](apps/snapstream-app/README.md)
+
 ### For Users (Chrome Web Store)
 *Coming Soon*
 
@@ -114,6 +134,13 @@ npm run test.all
 
 ```
 WEB_Works/
+├── apps/
+│   └── snapstream-app/       # Desktop application (Electron)
+│       ├── main.js           # Electron main process with ad blocker
+│       ├── app.js            # Combined browser + SnapStream UI
+│       ├── preload.js        # IPC bridge
+│       ├── index.html        # App layout
+│       └── README.md         # Desktop app documentation
 ├── src/
 │   ├── popup.js              # Main popup component
 │   ├── sendImages.js         # Content script for image detection
