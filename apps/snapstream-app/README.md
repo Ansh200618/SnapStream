@@ -1,61 +1,96 @@
 # SnapStream Desktop App
 
-A standalone desktop application version of SnapStream with an inbuilt browser and ad-blocking capabilities.
+A **full-featured desktop browser** with **SnapStream Image Downloader** as the primary functionality.
 
-## Features
+## 🌟 Features
 
-### 🌐 Inbuilt Browser
-- Full-featured web browser built with Electron
-- Navigate to any website
-- Back, forward, and reload controls
-- URL bar with search functionality (Google search integration)
-- Clean, modern interface
+### 🌐 Full-Fledged Browser
+- **Multi-tab browsing** with unlimited tabs
+- **Bookmarks** with quick access (Ctrl+D)
+- **Browsing history** with timestamps
+- **Settings panel** for customization
+- **Downloads manager** (ready for integration)
+- **Keyboard shortcuts** for power users
+- **Modern UI** with dark theme and smooth animations
+
+### 📸 SnapStream - Image Downloader (PRIMARY FEATURE)
+- **Highlighted with pulse animation** - can't miss it!
+- **Smart image detection** from any webpage
+- **Advanced filtering** (URL, dimensions, type)
+- **Bulk downloads** with one click
+- **Auto-detect** images on page load (configurable)
+- **Real-time preview** grid
+- **All original SnapStream features** from the Chrome extension
 
 ### 🛡️ Built-in Ad Blocker
 - **Powered by @cliqz/adblocker-electron** (similar to uBlock Origin)
-- Blocks ads and tracking scripts automatically
-- Easy toggle on/off with visual indicator
 - Uses EasyList and EasyPrivacy filter lists
+- Easy toggle on/off with visual indicator
 - Lightweight and efficient
 
-### 📸 Image Detection & Download
-- Detects all images on any webpage
-- Finds images in `<img>` tags and CSS backgrounds
-- Advanced filtering options:
-  - Filter by minimum width and height
-  - Filter by image type (JPG, PNG, GIF, WEBP)
-- Download individual images or all at once
-- Clean file naming with domain and numbering
-
 ### 🎨 Modern UI
-- Beautiful gradient design (Deep Indigo to Purple)
-- Resizable image panel
-- Real-time image preview grid
-- Intuitive controls and navigation
-- Status bar for feedback
+- Beautiful **dark theme** with purple gradient
+- **Tab bar** for easy organization
+- **Side panels** for bookmarks, history, downloads, settings
+- **Glass morphism** design
+- **Smooth animations** and transitions
+- **Intuitive controls**
 
-## Installation
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 14+ installed
-- npm 6+ installed
+- Node.js 14+
+- npm 6+
 
-### Quick Start
+### Installation
 
-1. **Navigate to the app directory**
+1. **Navigate to the app directory:**
    ```bash
    cd apps/snapstream-app
    ```
 
-2. **Install dependencies**
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-3. **Run the app**
+3. **Start the app:**
    ```bash
    npm start
    ```
+
+## 🎯 Using the Browser
+
+### Multi-Tab Browsing
+- **New tab**: Click + or press `Ctrl+T`
+- **Switch tabs**: Click tab or `Ctrl+Tab`
+- **Close tab**: Click × or `Ctrl+W`
+- **Navigate**: Enter URL or search terms in address bar
+
+### SnapStream - Image Downloader ⭐ PRIMARY FEATURE
+1. Look for the **golden pulsing camera button** (📸)
+2. Click to open SnapStream panel
+3. Images auto-detected from the current page
+4. Apply filters (URL, size, type)
+5. Select and download images
+6. Close panel when done
+
+### Bookmarks & History
+- **Add bookmark**: `Ctrl+D` or click ⭐
+- **View bookmarks**: Click 📚 or `Ctrl+Shift+B`
+- **View history**: Click 🕐 or `Ctrl+H`
+- **Quick navigate**: Click any bookmark/history item
+
+### Ad Blocker
+- **Green shield** (🛡️) = Blocking ads
+- **Red shield** = Ads allowed
+- Click to toggle on/off
+
+### Settings
+- Click ⚙️ to open settings
+- Set home page
+- Toggle auto-detect images
+- Configure preferences
 
 ## Building the App
 
