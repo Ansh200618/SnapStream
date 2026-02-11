@@ -6,7 +6,7 @@
 
 **Effortlessly discover, filter, and download images from any website**
 
-![SnapStream Demo]([https://github.com/user-attachments/images/Snapstream.png](https://github.com/Ansh200618/SnapStream/blob/main/images/Snapstream.png))
+![SnapStream Demo](https://github.com/Ansh200618/SnapStream/blob/main/images/Snapstream.png)
 
 ## ✨ Features
 
