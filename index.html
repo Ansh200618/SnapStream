@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnapStream - Effortlessly Download Images from Any Website</title>
+    <meta name="description" content="SnapStream is a powerful Chrome extension that helps you discover, filter, and bulk download images from any website.">
+    <style>
+        /* ============================================
+           SNAPSTREAM LANDING PAGE
+           Update these two variables to match your UI:
+           ============================================ */
+        :root {
+            --primary-color: #7C4DFF; /* Purple accent from the extension UI */
+            --primary-dark: #6535E8;  /* Darker shade for hover states */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            color: #1a1a2e;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        /* --- Navigation --- */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .navbar .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .navbar .logo span {
+            color: #1a1a2e;
+        }
+
+        .nav-links a {
+            margin-left: 30px;
+            font-weight: 500;
+            color: #555;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-color);
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 80px 20px 60px;
+            background: linear-gradient(160deg, #1a1a2e 0%, #30305a 50%, var(--primary-color) 100%);
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 52px;
+            font-weight: 800;
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero p {
+            font-size: 20px;
+            max-width: 600px;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 16px 36px;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: white;
+            color: var(--primary-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+
+        .btn-outline:hover {
+            border-color: white;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .hero-image {
+            margin-top: 60px;
+            max-width: 750px;
+            width: 90%;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        /* --- Features Section --- */
+        .features {
+            padding: 80px 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 50px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 35px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .feature-card .icon {
+            font-size: 36px;
+            margin-bottom: 16px;
+        }
+
+        .feature-card h3 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+
+        .feature-card p {
+            color: #555;
+            font-size: 15px;
+        }
+
+        /* --- Installation Section --- */
+        .installation {
+            padding: 80px 20px;
+            background: linear-gradient(180deg, #f0f0f8 0%, #f8f9fa 100%);
+        }
+
+        .installation-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .steps {
+            list-style: none;
+            counter-reset: step-counter;
+        }
+
+        .steps li {
+            counter-increment: step-counter;
+            display: flex;
+            align-items: flex-start;
+            gap: 24px;
+            margin-bottom: 36px;
+            background: white;
+            padding: 28px;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .step-content h3 {
+            font-size: 18px;
+            margin-bottom: 6px;
+        }
+
+        .step-content p {
+            color: #555;
+            font-size: 15px;
+        }
+
+        .step-content code {
+            background: #f0f0f8;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: var(--primary-color);
+        }
+
+        /* --- Footer --- */
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            background: #1a1a2e;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: white;
+            font-weight: 600;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 34px;
+            }
+            .hero p {
+                font-size: 17px;
+            }
+            .navbar {
+                padding: 16px 20px;
+            }
+            .nav-links a {
+                margin-left: 16px;
+                font-size: 14px;
+            }
+            .section-title {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="logo">🎯 Snap<span>Stream</span></div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#install">Install</a>
+            <!-- UPDATE: Link to your GitHub repository -->
+            <a href="https://github.com/Ansh200618/SnapStream" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>🎯 SnapStream</h1>
+        <p>Effortlessly discover, filter, and download images from any website — all in one click.</p>
+        <div class="hero-buttons">
+            <!-- UPDATE: This button links directly to your GitHub for download -->
+            <a href="https://github.com/Ansh200618/SnapStream" class="btn btn-primary" target="_blank" rel="noopener noreferrer">⬇ Download from GitHub</a>
+            <a href="#install" class="btn btn-outline">📖 Installation Guide</a>
+        </div>
+        <!-- UPDATE: Replace this src with your own screenshot or GIF of SnapStream in action -->
+        <img class="hero-image" src="images/Snapstream.png" alt="SnapStream extension screenshot" width="1280" height="640">
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <h2 class="section-title">Why SnapStream?</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon">🔍</div>
+                <h3>Smart Image Detection</h3>
+                <p>Automatically finds all images on any page — including CSS backgrounds, srcset attributes, and picture elements.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🎯</div>
+                <h3>Advanced Filtering</h3>
+                <p>Filter by file type, minimum dimensions, or URL patterns. Live preview updates as you adjust.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📥</div>
+                <h3>Bulk Download</h3>
+                <p>Download all filtered images with one click. Clean, sequential naming and smart batching built in.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🖥️</div>
+                <h3>Desktop App</h3>
+                <p>Standalone Electron app with an inbuilt browser and ad blocker — no Chrome or Edge needed.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🎨</div>
+                <h3>Modern UI</h3>
+                <p>Beautiful glass morphism design with gradient accents, responsive layout, and intuitive controls.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">⚡</div>
+                <h3>Lightweight &amp; Fast</h3>
+                <p>Built with React and HTM for a snappy experience. No heavy frameworks, just pure performance.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Guide Section -->
+    <section class="installation" id="install">
+        <div class="installation-content">
+            <h2 class="section-title">How to Install (Developer Mode)</h2>
+            <ol class="steps">
+                <li>
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Download the Repository</h3>
+                        <p>Go to the <a href="https://github.com/Ansh200618/SnapStream" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600;">SnapStream GitHub page</a>, click the green <strong>"Code"</strong> button, then select <strong>"Download ZIP"</strong>. Extract the ZIP to a folder on your computer.</p>
+                    </div>
+                </li>
+                <li>
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Open the Extensions Page</h3>
+                        <p>In Chrome or Edge, navigate to <code>chrome://extensions</code> in your address bar.</p>
+                    </div>
+                </li>
+                <li>
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Enable Developer Mode</h3>
+                        <p>Find the <strong>"Developer mode"</strong> toggle in the top-right corner of the extensions page and turn it <strong>on</strong>.</p>
+                    </div>
+                </li>
+                <li>
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Load the Extension</h3>
+                        <p>Click <strong>"Load unpacked"</strong>, then select the extracted SnapStream folder (the root directory containing <code>manifest.json</code>). The 🎯 SnapStream icon will appear in your toolbar!</p>
+                    </div>
+                </li>
+            </ol>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Made with ❤️ by <a href="https://github.com/Ansh200618" target="_blank" rel="noopener noreferrer">Ansh200618</a></p>
+        <p style="margin-top: 8px;">
+            <a href="https://github.com/Ansh200618/SnapStream" target="_blank" rel="noopener noreferrer">View on GitHub →</a>
+        </p>
+    </footer>
+
+</body>
+</html>
