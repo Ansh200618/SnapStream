@@ -1,0 +1,5 @@
+
+> snapstream-image-downloader@4.0.0 test
+> jest --watch
+
+sh: 1: jest: not found

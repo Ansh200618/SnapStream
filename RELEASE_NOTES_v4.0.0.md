@@ -19,7 +19,7 @@
 - **New Name:** SnapStream - Image Downloader
 - **New Tagline:** "Effortlessly discover, filter, and download images from any website"
 - **New Color Scheme:** Deep Indigo to Purple gradient (#4F46E5 → #7C3AED)
-- **Updated Version:** 4.0.0 (Manifest V2)
+- **Updated Version:** 4.0.0 (Manifest V3)
 
 ### New Features
 - ✨ **GitHub Redirect:** First-time installation now opens the GitHub repository automatically
@@ -68,8 +68,8 @@
 
 ### Version Information
 - **Extension Version:** 4.0.0
-- **Manifest Version:** 2
-- **Minimum Chrome Version:** 72
+- **Manifest Version:** 3
+- **Minimum Chrome Version:** 88
 - **Node.js Version:** 14+
 - **License:** MIT
 
