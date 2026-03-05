@@ -21,15 +21,26 @@ const checkboxOptions = {
   prop: 'checked',
   values: [true, false],
   trigger($el: JQuery<HTMLInputElement>, value: any) {
-    $el.prop('checked', !value).trigger('click');
+    // Set checked to opposite of desired value, then native click toggles it
+    // Using the prototype setter bypasses React's instance-level value tracking
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, 'checked'
+    )!.set!;
+    nativeSetter.call($el[0], !value);
+    $el[0].click();
   },
 };
 
 const inputOptions = {
   prop: 'value',
   trigger($el: JQuery<HTMLInputElement>, value: any) {
-    $el.val(value);
-    $el[0].dispatchEvent(new CustomEvent('change'));
+    // Use the prototype setter to bypass React's instance-level value tracking,
+    // then dispatch a bubbling event so it reaches React's root handler
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, 'value'
+    )!.set!;
+    nativeSetter.call($el[0], value);
+    $el[0].dispatchEvent(new Event('change', { bubbles: true }));
   },
 };
 
@@ -98,6 +109,7 @@ describe(`save`, () => {
     describe(option.key, () => {
       option.values.forEach((value) => {
         it(value.toString(), () => {
+          require('./defaults');
           require('./options');
 
           option.trigger($(option.input), value);
