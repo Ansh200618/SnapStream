@@ -2,24 +2,26 @@
   "name": "SnapStream - Image Downloader",
   "description": "Effortlessly discover, filter, and download images from any website",
   "version": "4.0.0",
-  "minimum_chrome_version": "72",
-  "manifest_version": 2,
+  "minimum_chrome_version": "88",
+  "manifest_version": 3,
   "permissions": [
     "activeTab",
     "tabs",
     "downloads",
     "storage",
-    "webRequest",
-    "webRequestBlocking",
     "webNavigation",
     "contextMenus",
     "cookies",
     "clipboardWrite",
     "notifications",
-    "<all_urls>",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "scripting",
+    "declarativeNetRequest"
   ],
-  "browser_action": {
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
     "default_icon": "images/icon_128.png",
     "default_popup": "views/popup.html"
   },
@@ -29,17 +31,23 @@
     "128": "images/icon_128.png"
   },
   "background": {
-    "scripts": [
-      "src/background/handleUpdates.js",
-      "src/background/setReferrer.js"
-    ]
+    "service_worker": "src/background/service-worker.js"
   },
   "options_page": "views/options.html",
   "incognito": "spanning",
-  "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "web_accessible_resources": [
-    "images/*",
-    "lib/*",
-    "stylesheets/*"
+    {
+      "resources": [
+        "images/*",
+        "lib/*",
+        "stylesheets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
   ]
 }
