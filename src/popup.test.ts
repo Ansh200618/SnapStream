@@ -8,12 +8,14 @@ beforeEach(() => {
   global.chrome = mockChrome();
   
   // Mock tabs.query to call the callback with active tabs
-  asMockedFunction(chrome.tabs.query).mockImplementation((_, callback: any) => {
+  // Cast through `any` because the runtime API still supports callback style,
+  // but newer @types/chrome declares only the Promise overload.
+  (chrome.tabs.query as any) = jest.fn((_, callback: any) => {
     callback([{ id: 1, url: 'https://example.com' }]);
   });
-  
+
   // Mock windows.getCurrent to call the callback with window
-  asMockedFunction(chrome.windows.getCurrent).mockImplementation((callback: any) => {
+  (chrome.windows.getCurrent as any) = jest.fn((callback: any) => {
     callback({ id: 'window' });
   });
   
