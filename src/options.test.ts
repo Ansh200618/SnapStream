@@ -2,6 +2,15 @@ import { mockChrome } from './test-utils';
 
 declare var global: any;
 
+// Cache native property setters from the prototype to bypass React's instance-level
+// value tracking when triggering changes in tests
+const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
+  HTMLInputElement.prototype, 'checked'
+)!.set!;
+const nativeValueSetter = Object.getOwnPropertyDescriptor(
+  HTMLInputElement.prototype, 'value'
+)!.set!;
+
 beforeEach(() => {
   global.chrome = mockChrome();
   localStorage.clear();
@@ -22,11 +31,7 @@ const checkboxOptions = {
   values: [true, false],
   trigger($el: JQuery<HTMLInputElement>, value: any) {
     // Set checked to opposite of desired value, then native click toggles it
-    // Using the prototype setter bypasses React's instance-level value tracking
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, 'checked'
-    )!.set!;
-    nativeSetter.call($el[0], !value);
+    nativeCheckedSetter.call($el[0], !value);
     $el[0].click();
   },
 };
@@ -34,12 +39,8 @@ const checkboxOptions = {
 const inputOptions = {
   prop: 'value',
   trigger($el: JQuery<HTMLInputElement>, value: any) {
-    // Use the prototype setter to bypass React's instance-level value tracking,
-    // then dispatch a bubbling event so it reaches React's root handler
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, 'value'
-    )!.set!;
-    nativeSetter.call($el[0], value);
+    // Bypass React's value tracking, then dispatch a bubbling event
+    nativeValueSetter.call($el[0], value);
     $el[0].dispatchEvent(new Event('change', { bubbles: true }));
   },
 };
