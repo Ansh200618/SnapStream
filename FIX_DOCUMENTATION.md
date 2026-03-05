@@ -32,7 +32,7 @@ Implemented a robust download mechanism that:
 ### Updated Files
 - **`src/ImageActions.js`**: Individual image download button
 - **`src/popup.js`**: Bulk download functionality
-- **`src/background/setReferrer.js`**: Added support for fetch requests
+- **`src/background/service-worker.js`**: Added support for fetch requests via declarativeNetRequest
 
 ## Usage Examples
 

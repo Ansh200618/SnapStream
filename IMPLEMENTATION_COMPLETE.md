@@ -79,7 +79,7 @@ Remove any payment option
 3. `views/options.html` - Removed tab CSS
 4. `src/popup.js` - Added refresh functionality
 5. `views/popup.html` - Added refresh button styles
-6. `src/background/setReferrer.js` - Enhanced headers
+6. `src/background/service-worker.js` - Enhanced headers via declarativeNetRequest
 7. `manifest.json` - Enabled incognito mode
 8. `TESTING_SUMMARY.md` - Added documentation
 
