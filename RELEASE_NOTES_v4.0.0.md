@@ -19,7 +19,7 @@
 - **New Name:** SnapStream - Image Downloader
 - **New Tagline:** "Effortlessly discover, filter, and download images from any website"
 - **New Color Scheme:** Deep Indigo to Purple gradient (#4F46E5 → #7C3AED)
-- **Updated Version:** 4.0.0 (Manifest V2)
+- **Updated Version:** 4.0.0 (Manifest V3)
 
 ### New Features
 - ✨ **GitHub Redirect:** First-time installation now opens the GitHub repository automatically
@@ -68,16 +68,16 @@
 
 ### Version Information
 - **Extension Version:** 4.0.0
-- **Manifest Version:** 2
-- **Minimum Chrome Version:** 72
+- **Manifest Version:** 3
+- **Minimum Chrome Version:** 88
 - **Node.js Version:** 14+
 - **License:** MIT
 
 ### Test Coverage
 - Total Tests: 93
-- Passing: 73 (79%)
-- Failing: 19 (21% - non-critical)
+- Passing: 92 (98.9%)
 - Skipped: 1
+- Failing: 0
 
 ### Build Stats
 - Build Time: <5 seconds
@@ -90,8 +90,8 @@
 
 ### Quick Start
 ```bash
-git clone https://github.com/Ansh200618/WEB_Works.git
-cd WEB_Works
+git clone https://github.com/Ansh200618/SnapStream.git
+cd SnapStream
 npm install
 npm run build
 ```
@@ -123,13 +123,7 @@ No migration needed - all your existing settings will be preserved!
 
 ## 🐛 Known Issues
 
-### Test Suite
-- 19 tests in `options.test.ts` fail due to jQuery/React event handling
-- These are test infrastructure issues only
-- **Actual extension functionality works perfectly**
-
 ### Future Improvements
-- Migrate to Manifest V3 (Chrome requirement)
 - Integrate all settings into popup (remove separate options page)
 - Add ZIP archive download option
 - Image format conversion support
@@ -170,9 +164,9 @@ See [LICENSE](LICENSE) file for full details.
 
 ## 📞 Support & Links
 
-- **GitHub Repository:** https://github.com/Ansh200618/WEB_Works
-- **Issues:** https://github.com/Ansh200618/WEB_Works/issues
-- **Discussions:** https://github.com/Ansh200618/WEB_Works/discussions
+- **GitHub Repository:** https://github.com/Ansh200618/SnapStream
+- **Issues:** https://github.com/Ansh200618/SnapStream/issues
+- **Discussions:** https://github.com/Ansh200618/SnapStream/discussions
 
 ---
 

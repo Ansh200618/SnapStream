@@ -50,15 +50,12 @@ const Popup = () => {
             return;
           }
           
-          chrome.tabs.executeScript(currentTab.id, {
-            file: 'src/sendImages.js',
-            allFrames: true,
-          }, function() {
-            // Handle chrome.runtime.lastError to prevent "Unchecked runtime.lastError" warnings
-            if (chrome.runtime.lastError) {
-              console.error('[SnapStream] Script execution failed:', chrome.runtime.lastError.message);
-              setIsLoadingImages(false);
-            }
+          chrome.scripting.executeScript({
+            target: { tabId: currentTab.id, allFrames: true },
+            files: ['src/sendImages.js'],
+          }).catch((error) => {
+            console.error('[SnapStream] Script execution failed:', error.message);
+            setIsLoadingImages(false);
           });
         }
       );

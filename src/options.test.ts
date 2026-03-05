@@ -2,6 +2,15 @@ import { mockChrome } from './test-utils';
 
 declare var global: any;
 
+// Cache native property setters from the prototype to bypass React's instance-level
+// value tracking when triggering changes in tests
+const nativeCheckedSetter = Object.getOwnPropertyDescriptor(
+  HTMLInputElement.prototype, 'checked'
+)!.set!;
+const nativeValueSetter = Object.getOwnPropertyDescriptor(
+  HTMLInputElement.prototype, 'value'
+)!.set!;
+
 beforeEach(() => {
   global.chrome = mockChrome();
   localStorage.clear();
@@ -21,15 +30,18 @@ const checkboxOptions = {
   prop: 'checked',
   values: [true, false],
   trigger($el: JQuery<HTMLInputElement>, value: any) {
-    $el.prop('checked', !value).trigger('click');
+    // Set checked to opposite of desired value, then native click toggles it
+    nativeCheckedSetter.call($el[0], !value);
+    $el[0].click();
   },
 };
 
 const inputOptions = {
   prop: 'value',
   trigger($el: JQuery<HTMLInputElement>, value: any) {
-    $el.val(value);
-    $el[0].dispatchEvent(new CustomEvent('change'));
+    // Bypass React's value tracking, then dispatch a bubbling event
+    nativeValueSetter.call($el[0], value);
+    $el[0].dispatchEvent(new Event('change', { bubbles: true }));
   },
 };
 
@@ -98,6 +110,7 @@ describe(`save`, () => {
     describe(option.key, () => {
       option.values.forEach((value) => {
         it(value.toString(), () => {
+          require('./defaults');
           require('./options');
 
           option.trigger($(option.input), value);

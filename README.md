@@ -1,8 +1,8 @@
 # 🎯 SnapStream - Image Downloader
 
-[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](https://github.com/Ansh200618/WEB_Works)
+[![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)](https://github.com/Ansh200618/SnapStream)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Manifest](https://img.shields.io/badge/manifest-V2-orange.svg)](manifest.json)
+[![Manifest](https://img.shields.io/badge/manifest-V3-orange.svg)](manifest.json)
 
 **Effortlessly discover, filter, and download images from any website**
 
@@ -85,8 +85,8 @@ npm start
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Ansh200618/WEB_Works.git
-   cd WEB_Works
+   git clone https://github.com/Ansh200618/SnapStream.git
+   cd SnapStream
    ```
 
 2. **Install dependencies**
@@ -133,7 +133,7 @@ npm run test.all
 ### Project Structure
 
 ```
-WEB_Works/
+SnapStream/
 ├── apps/
 │   └── snapstream-app/       # Desktop application (Electron)
 │       ├── main.js           # Electron main process with ad blocker
@@ -145,9 +145,9 @@ WEB_Works/
 │   ├── popup.js              # Main popup component
 │   ├── sendImages.js         # Content script for image detection
 │   ├── defaults.js           # Default settings
+│   ├── robustDownload.js     # Robust image download utility
 │   ├── background/
-│   │   ├── handleUpdates.js  # Install/update handler
-│   │   └── setReferrer.js    # Referrer management
+│   │   └── service-worker.js # MV3 background service worker
 │   ├── components/
 │   │   └── *.js              # Reusable UI components
 │   └── hooks/
@@ -157,7 +157,7 @@ WEB_Works/
 │   └── options.html          # Options page
 ├── stylesheets/
 │   └── main.css              # Main styles
-├── manifest.json             # Extension manifest (V2)
+├── manifest.json             # Extension manifest (V3)
 └── package.json
 ```
 
@@ -207,7 +207,7 @@ SnapStream uses a sophisticated multi-layered approach to find images:
 | Language | JavaScript ES6+ |
 | Styling | Custom CSS |
 | Build Tool | Node.js scripts |
-| Extension | Manifest V2 |
+| Extension | Manifest V3 |
 | Testing | Jest 26 |
 
 ## 🤝 Contributing
@@ -241,8 +241,8 @@ Copyright (c) 2026 Ansh200618
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/Ansh200618/WEB_Works/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/Ansh200618/WEB_Works/discussions)
+- **Issues:** [GitHub Issues](https://github.com/Ansh200618/SnapStream/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/Ansh200618/SnapStream/discussions)
 
 ---
 

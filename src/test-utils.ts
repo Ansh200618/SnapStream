@@ -10,6 +10,7 @@ export const mockChrome = () =>
       },
     },
     runtime: {
+      id: 'test-extension-id',
       onInstalled: {
         addListener: jest.fn(),
       },
@@ -20,9 +21,11 @@ export const mockChrome = () =>
       sendMessage: jest.fn(),
       getManifest: jest.fn(() => ({ version: '4.0.0' })),
     },
+    scripting: {
+      executeScript: jest.fn(() => Promise.resolve([])),
+    },
     tabs: {
       create: jest.fn(),
-      executeScript: jest.fn(),
       query: jest.fn(),
     },
     windows: {

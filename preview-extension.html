@@ -62,7 +62,7 @@
         <div class="preview-header">
             <h1>🎯 SnapStream - Image Downloader</h1>
             <p>Effortlessly discover, filter, and download images from any website</p>
-            <p style="font-size: 12px; margin-top: 10px;">Version 4.0.0 | Manifest V2</p>
+            <p style="font-size: 12px; margin-top: 10px;">Version 4.0.0 | Manifest V3</p>
         </div>
         
         <div class="info-box">
@@ -85,7 +85,7 @@
         <div style="padding: 20px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
             <h3 style="margin-top: 0;">📥 Installation</h3>
             <ol style="color: #374151; line-height: 1.8;">
-                <li>Clone the repository: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">git clone https://github.com/Ansh200618/WEB_Works.git</code></li>
+                <li>Clone the repository: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">git clone https://github.com/Ansh200618/SnapStream.git</code></li>
                 <li>Navigate to the directory and install dependencies: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">npm install</code></li>
                 <li>Build the extension: <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">npm run build</code></li>
                 <li>Open Chrome and go to <code style="background: #e5e7eb; padding: 2px 6px; border-radius: 3px;">chrome://extensions</code></li>
@@ -106,9 +106,11 @@
                 openOptionsPage: () => { alert('Options would open here'); },
                 getManifest: () => ({ version: '4.0.0' })
             },
+            scripting: {
+                executeScript: () => Promise.resolve([])
+            },
             tabs: {
                 query: () => {},
-                executeScript: () => {},
                 create: () => {}
             },
             windows: {
@@ -116,7 +118,10 @@
             },
             downloads: {
                 download: () => {},
-                onDeterminingFilename: { addListener: () => {}, removeListener: () => {} }
+                onChanged: { addListener: () => {}, removeListener: () => {} }
+            },
+            notifications: {
+                create: () => {}
             }
         };
     </script>
