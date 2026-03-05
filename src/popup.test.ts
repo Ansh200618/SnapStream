@@ -7,17 +7,21 @@ declare var global: any;
 beforeEach(() => {
   global.chrome = mockChrome();
   
-  // Mock tabs.query to call the callback with active tabs
-  // Cast through `any` because the runtime API still supports callback style,
-  // but newer @types/chrome declares only the Promise overload.
-  (chrome.tabs.query as any) = jest.fn((_, callback: any) => {
-    callback([{ id: 1, url: 'https://example.com' }]);
-  });
+  // Mock tabs.query to call the callback with active tabs.
+  // The runtime Chrome API still supports callback style but newer @types/chrome
+  // declares only Promise overloads, so we cast the implementation through `any`.
+  asMockedFunction(chrome.tabs.query).mockImplementation(
+    ((_queryInfo: any, callback: any) => {
+      callback([{ id: 1, url: 'https://example.com' }]);
+    }) as any
+  );
 
   // Mock windows.getCurrent to call the callback with window
-  (chrome.windows.getCurrent as any) = jest.fn((callback: any) => {
-    callback({ id: 'window' });
-  });
+  asMockedFunction(chrome.windows.getCurrent).mockImplementation(
+    ((callback: any) => {
+      callback({ id: 'window' });
+    }) as any
+  );
   
   global.this = global;
   global.$ = require('../lib/jquery-3.5.1.min');
