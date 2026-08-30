@@ -247,3 +247,10 @@ Copyright (c) 2026 Ansh200618
 ---
 
 **Made with ❤️ by [Ansh200618](https://github.com/Ansh200618)**
+
+## Support Development
+
+This project is free and open source. If you find it useful, you can support continued development through:
+
+- [GitHub Sponsors](https://github.com/sponsors/anshdeepofficial)
+- [Buy Me a Coffee](https://buymeacoffee.com/anshdeepofficial)
