@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SnapStream Workspace</title>
   <link rel="stylesheet" href="../stylesheets/dashboard.css" />
+  <link rel="stylesheet" href="../stylesheets/dashboard-refine.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -57,8 +58,8 @@
         <div class="scan-heading">
           <div>
             <span class="section-kicker">Scan source</span>
-            <h2>Find every discoverable image on a page</h2>
-            <p>SnapStream scrolls through lazy-loaded content and checks image elements, links, responsive sources, CSS backgrounds and loaded resources.</p>
+            <h2>Find the complete image set</h2>
+            <p>SnapStream scans lazy-loaded page content and detects numbered galleries. It keeps working until the page is genuinely exhausted or the full gallery sequence has been checked.</p>
           </div>
           <div class="depth-pill" id="depth-pill"><span></span> Deep mode</div>
         </div>
@@ -114,6 +115,7 @@
           </label>
           <select id="filter-source" aria-label="Source type">
             <option value="all">All sources</option>
+            <option value="gallery">Gallery photos</option>
             <option value="image">Page images</option>
             <option value="background">Backgrounds</option>
             <option value="linked">Linked images</option>
