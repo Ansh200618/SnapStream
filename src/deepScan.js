@@ -28,13 +28,13 @@
     } catch (_) {}
   }
 
-  function absoluteUrl(value) {
+  function absoluteUrl(value, base = document.baseURI) {
     if (!value || typeof value !== 'string') return null;
-    const raw = value.trim().replace(/^['"]|['"]$/g, '');
+    const raw = value.trim().replace(/^['\"]|['\"]$/g, '');
     if (!raw || raw === 'none' || raw.startsWith('blob:')) return null;
     if (raw.startsWith('data:image/')) return raw;
     try {
-      const parsed = new URL(raw, document.baseURI);
+      const parsed = new URL(raw, base);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
       parsed.hash = '';
       return parsed.href;
@@ -51,20 +51,176 @@
   function cssUrls(value) {
     if (!value || value === 'none') return [];
     const urls = [];
-    const regex = /url\((['"]?)(.*?)\1\)/gi;
+    const regex = /url\((['\"]?)(.*?)\1\)/gi;
     let match;
     while ((match = regex.exec(value))) urls.push(match[2]);
     return urls;
   }
 
   function looksLikeImageLink(url) {
-    return /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|tiff?|webp)(?:$|[?#])/i.test(url || '');
+    return /\.(?:avif|bmp|gif|jpe?g|jfif|png|svg|tiff?|webp)(?:$|[?#])/i.test(url || '');
+  }
+
+  const JUNK_URL_RE = /(?:^|[\/_\-.])(logo|sprite|icon|favicon|branding|badge|button|btn|arrow|next|prev|previous|loader|loading|spinner|spacer|pixel|blank|transparent|social|facebook|twitter|youtube|instagram|whatsapp|google|advert|advertise|advertisement|banner|ads?|tracking)(?:[\/_\-.]|$)/i;
+  const JUNK_CONTEXT_RE = /\b(ad|ads|advert|advertisement|banner|branding|logo|sprite|icon|header|footer|nav|navigation|social|share|widget|promo|promotion|tracking)\b/i;
+  const CONTENT_CONTEXT_RE = /\b(photo|photos|picture|pictures|image|images|still|stills|gallery|slide|slideshow|content|main|article|actress|actor|celebrity)\b/i;
+
+  function isLikelyJunkUrl(url) {
+    if (!url || url.startsWith('data:image/')) return false;
+    try {
+      const parsed = new URL(url);
+      return JUNK_URL_RE.test(`${parsed.hostname}${parsed.pathname}`) || /\.(?:ico)(?:$|[?#])/i.test(parsed.pathname);
+    } catch (_) {
+      return JUNK_URL_RE.test(url);
+    }
+  }
+
+  function isObviouslyJunkDimensions(width, height) {
+    width = Number(width) || 0;
+    height = Number(height) || 0;
+    if (!width || !height) return false;
+    if (width <= 90 || height <= 70) return true;
+    const ratio = Math.max(width, height) / Math.max(1, Math.min(width, height));
+    if (ratio >= 5 && Math.min(width, height) < 260) return true;
+    return false;
   }
 
   function settingsForDepth(depth) {
     if (depth === 'exhaustive') return { maxRounds: 240, delay: 520, stableRounds: 10, step: 0.72 };
     if (depth === 'balanced') return { maxRounds: 80, delay: 320, stableRounds: 4, step: 0.9 };
     return { maxRounds: 160, delay: 440, stableRounds: 7, step: 0.78 };
+  }
+
+  function subjectTokens(doc = document) {
+    const raw = `${doc.querySelector('h1')?.textContent || ''} ${doc.title || ''}`.toLowerCase();
+    const stop = new Set(['photos','photo','pictures','picture','stills','still','images','image','gallery','latest','hd','the','and','for','with','aka']);
+    return Array.from(new Set(raw.split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !stop.has(token)))).slice(0, 10);
+  }
+
+  function detectNumberedGallery() {
+    if (window !== window.top) return null;
+    const text = (document.body?.innerText || '').slice(0, 120000);
+    const counter = text.match(/\b(\d{1,5})\s+of\s+(\d{1,5})\b/i);
+    if (!counter) return null;
+    const total = Number(counter[2]);
+    if (!Number.isInteger(total) || total < 3 || total > 5000) return null;
+
+    const url = new URL(location.href);
+    const match = url.pathname.match(/^(.*?[-_])(\d+)(\.html?)$/i);
+    if (!match) return null;
+
+    return {
+      total,
+      prefix: match[1],
+      suffix: match[3],
+      origin: url.origin,
+      search: url.search,
+      tokens: subjectTokens(document),
+    };
+  }
+
+  function bestImageUrlFromElement(img, pageUrl) {
+    const candidates = [];
+    parseSrcset(img.getAttribute('srcset')).forEach((value) => candidates.push(value));
+    parseSrcset(img.getAttribute('data-srcset')).forEach((value) => candidates.push(value));
+    ['data-original','data-lazy-src','data-src','data-image','data-url','src'].forEach((name) => {
+      const value = img.getAttribute(name);
+      if (value) candidates.push(value);
+    });
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      const resolved = absoluteUrl(candidates[i], pageUrl);
+      if (resolved && !isLikelyJunkUrl(resolved)) return resolved;
+    }
+    return null;
+  }
+
+  function scoreGalleryImage(img, pageUrl, tokens) {
+    const url = bestImageUrlFromElement(img, pageUrl);
+    if (!url) return null;
+
+    const width = Number(img.getAttribute('width')) || 0;
+    const height = Number(img.getAttribute('height')) || 0;
+    if (isObviouslyJunkDimensions(width, height)) return null;
+
+    const alt = `${img.getAttribute('alt') || ''} ${img.getAttribute('title') || ''}`.trim();
+    const contextNode = img.closest('figure,article,main,section,div,a');
+    const context = `${img.className || ''} ${img.id || ''} ${contextNode?.className || ''} ${contextNode?.id || ''}`.toLowerCase();
+    const haystack = `${url} ${alt}`.toLowerCase();
+    let score = 0;
+
+    if (CONTENT_CONTEXT_RE.test(context)) score += 5;
+    if (JUNK_CONTEXT_RE.test(context)) score -= 9;
+    if (width >= 450 && height >= 450) score += 5;
+    else if (width >= 300 && height >= 300) score += 3;
+    if (width && height && Math.max(width, height) / Math.max(1, Math.min(width, height)) < 3.2) score += 2;
+
+    let tokenHits = 0;
+    for (const token of tokens) if (haystack.includes(token)) tokenHits += 1;
+    score += Math.min(10, tokenHits * 3);
+
+    const parentLink = img.closest('a[href]');
+    if (parentLink) {
+      try {
+        const href = new URL(parentLink.href, pageUrl);
+        if (/[-_]\d+\.html?$/i.test(href.pathname)) score += 4;
+      } catch (_) {}
+    }
+
+    if (isLikelyJunkUrl(url)) score -= 12;
+    return { url, alt, width, height, score };
+  }
+
+  function extractPrimaryGalleryImage(html, pageUrl, tokens) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const candidates = Array.from(doc.querySelectorAll('img'))
+      .map((img) => scoreGalleryImage(img, pageUrl, tokens))
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+    if (!candidates.length) return null;
+    const best = candidates[0];
+    if (best.score < 2) return null;
+    return best;
+  }
+
+  async function crawlNumberedGallery(scanId, info, add, flush, setProgress) {
+    const urls = [];
+    for (let number = 1; number <= info.total; number += 1) {
+      urls.push(`${info.origin}${info.prefix}${number}${info.suffix}${info.search}`);
+    }
+
+    let completed = 0;
+    const concurrency = 6;
+    let cursor = 0;
+
+    async function worker() {
+      while (cursor < urls.length && !cancelledScans.has(scanId)) {
+        const index = cursor++;
+        const pageUrl = urls[index];
+        try {
+          const response = await fetch(pageUrl, { credentials: 'include', cache: 'force-cache' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const html = await response.text();
+          const image = extractPrimaryGalleryImage(html, pageUrl, info.tokens);
+          if (image) {
+            add(image.url, 'gallery', null, {
+              alt: image.alt,
+              width: image.width,
+              height: image.height,
+              pageUrl,
+            });
+          }
+        } catch (_) {}
+        completed += 1;
+        if (completed % 6 === 0 || completed === urls.length) {
+          setProgress(completed);
+          flush('gallery-crawl');
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    return completed;
   }
 
   async function runScan(scanId, options) {
@@ -84,19 +240,83 @@
     let previousCount = 0;
 
     const add = (raw, source, element, extra = {}) => {
-      const url = absoluteUrl(raw);
+      const url = absoluteUrl(raw, extra.pageUrl || document.baseURI);
       if (!url || seenUrls.has(url)) return;
+      const width = Number(extra.width || (element && (element.naturalWidth || element.videoWidth)) || 0);
+      const height = Number(extra.height || (element && (element.naturalHeight || element.videoHeight)) || 0);
+      if (source !== 'gallery' && (isLikelyJunkUrl(url) || isObviouslyJunkDimensions(width, height))) return;
       seenUrls.add(url);
       queued.set(url, {
         url,
         source,
         frameUrl: location.href,
-        pageUrl: document.location.href,
+        pageUrl: extra.pageUrl || document.location.href,
         alt: extra.alt || (element && element.getAttribute && (element.getAttribute('alt') || element.getAttribute('title'))) || '',
-        width: Number(extra.width || (element && (element.naturalWidth || element.videoWidth)) || 0),
-        height: Number(extra.height || (element && (element.naturalHeight || element.videoHeight)) || 0),
+        width,
+        height,
       });
     };
+
+    const flush = (phase) => {
+      if (queued.size) {
+        const images = Array.from(queued.values());
+        queued.clear();
+        safeSend({ type: 'SNAPSTREAM_SCAN_BATCH', scanId, images, pass, elementsChecked, phase, frameUrl: location.href });
+      }
+      safeSend({ type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass, found: seenUrls.size, elementsChecked, phase, frameUrl: location.href, isTopFrame });
+    };
+
+    const gallery = detectNumberedGallery();
+    if (gallery && isTopFrame) {
+      safeSend({
+        type: 'SNAPSTREAM_SCAN_STATUS',
+        scanId,
+        pass: 0,
+        found: 0,
+        elementsChecked: 0,
+        phase: 'gallery-crawl',
+        frameUrl: location.href,
+        isTopFrame: true,
+        galleryTotal: gallery.total,
+        galleryCompleted: 0,
+      });
+
+      await crawlNumberedGallery(
+        scanId,
+        gallery,
+        add,
+        flush,
+        (completed) => {
+          pass = completed;
+          elementsChecked = completed;
+          safeSend({
+            type: 'SNAPSTREAM_SCAN_STATUS',
+            scanId,
+            pass,
+            found: seenUrls.size,
+            elementsChecked,
+            phase: 'gallery-crawl',
+            frameUrl: location.href,
+            isTopFrame: true,
+            galleryTotal: gallery.total,
+            galleryCompleted: completed,
+          });
+        }
+      );
+
+      flush(cancelledScans.has(scanId) ? 'cancelled' : 'finalizing');
+      safeSend({
+        type: 'SNAPSTREAM_SCAN_FRAME_DONE',
+        scanId,
+        found: seenUrls.size,
+        pass,
+        elementsChecked,
+        frameUrl: location.href,
+        isTopFrame: true,
+        cancelled: cancelledScans.has(scanId),
+      });
+      return;
+    }
 
     const inspectPseudo = (element, pseudo) => {
       try {
@@ -137,7 +357,7 @@
         if (['og:image','og:image:url','og:image:secure_url','twitter:image','twitter:image:src'].includes(property)) add(element.content, 'meta', element);
       } else if (tag === 'link') {
         const rel = (element.rel || '').toLowerCase();
-        if (rel === 'image_src' || rel.includes('icon') || (rel.includes('preload') && element.as === 'image')) add(element.href, 'resource', element);
+        if (rel === 'image_src' || (rel.includes('preload') && element.as === 'image')) add(element.href, 'resource', element);
       }
 
       ['data-bg','data-background','data-background-image','data-bg-src','poster'].forEach((name) => add(element.getAttribute && element.getAttribute(name), 'background', element));
@@ -186,15 +406,6 @@
     const inspectDocument = (deepBackgroundSweep = false) => {
       collectRoots(document).forEach((root) => inspectRoot(root, deepBackgroundSweep));
       inspectResources();
-    };
-
-    const flush = (phase) => {
-      if (queued.size) {
-        const images = Array.from(queued.values());
-        queued.clear();
-        safeSend({ type: 'SNAPSTREAM_SCAN_BATCH', scanId, images, pass, elementsChecked, phase, frameUrl: location.href });
-      }
-      safeSend({ type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass, found: seenUrls.size, elementsChecked, phase, frameUrl: location.href, isTopFrame });
     };
 
     let observeShadowRoots;
