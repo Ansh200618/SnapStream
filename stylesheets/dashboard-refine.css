@@ -1,0 +1,205 @@
+/* SnapStream v5.0.2 responsive refinements */
+
+/* Keep controls from visually colliding in medium and side-panel widths. */
+.scan-card,
+.results-section,
+.filter-bar,
+.ai-strip,
+.scan-status,
+.url-box,
+.results-heading,
+.result-actions,
+.scan-heading,
+.scan-status-row,
+.scan-state {
+  min-width: 0;
+}
+
+.url-box input,
+.search-field input,
+.scan-state > div,
+.ai-strip > div:nth-child(2) {
+  min-width: 0;
+}
+
+.scan-status-detail,
+#scan-status-detail {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.progress-track > div {
+  max-width: 100%;
+}
+
+/* Full workspace: preserve breathing room on laptops. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .app-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .main-area { padding-left: 26px; padding-right: 26px; }
+  .url-box { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .url-box .scan-button { grid-column: 2 / -1; width: 100%; }
+  .filter-bar { grid-template-columns: minmax(180px, 1fr) minmax(130px, .55fr) minmax(130px, .55fr) 38px; }
+}
+
+/* Chrome side panel commonly lives around 360–520px wide. */
+@media (max-width: 640px) {
+  body { min-width: 0; }
+  .app-shell { display: block; }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: 62px;
+    padding: 9px 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .side-brand { margin-right: auto; padding: 0; }
+  .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .brand-copy strong { font-size: 12px; }
+  .brand-copy small { display: none; }
+
+  .side-nav { display: flex; gap: 4px; }
+  .nav-item,
+  .new-tab-button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  .nav-item span,
+  .new-tab-button span,
+  .side-summary { display: none; }
+  .nav-item::after { right: 2px; bottom: 3px; }
+
+  .main-area {
+    padding: 0 12px 30px;
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    min-height: 76px;
+    padding: 10px 2px;
+  }
+  .topbar h1 { font-size: 19px; }
+  .top-eyebrow { font-size: 7.5px; }
+
+  .scan-card {
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .scan-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .scan-heading h2 { font-size: 18px; }
+  .scan-heading p { font-size: 10px; line-height: 1.5; }
+  .depth-pill { justify-self: start; }
+
+  .url-box {
+    margin-top: 16px;
+    padding: 7px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 6px;
+    border-radius: 15px;
+  }
+  .url-icon { width: 30px; }
+  .url-box input {
+    width: 100%;
+    font-size: 9.5px;
+  }
+  .url-box .text-button {
+    grid-column: 1 / 2;
+    width: 100%;
+    padding: 0 6px;
+    font-size: 8px;
+  }
+  .url-box .scan-button {
+    grid-column: 2 / 3;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .scan-status { padding: 13px; }
+  .scan-status-row { align-items: flex-start; }
+  .scan-state { align-items: flex-start; }
+  .scan-state small { white-space: normal; line-height: 1.35; }
+  .stop-button { flex: 0 0 auto; }
+  .scan-metrics { gap: 8px 14px; line-height: 1.35; }
+
+  .results-section { padding-top: 24px; }
+  .results-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 12px;
+  }
+  .results-heading h2 { font-size: 19px; }
+  .result-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    width: 100%;
+  }
+  .result-actions > button { width: 100%; min-width: 0; }
+
+  .filter-bar {
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+  .search-field { grid-column: 1 / -1; }
+  .filter-bar select { width: 100%; min-width: 0; }
+  .filter-icon-button { grid-column: 1 / -1; width: 100%; }
+
+  .ai-strip {
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: start;
+    padding: 12px;
+  }
+  .coming-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .ai-strip small { line-height: 1.4; }
+
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .image-card { border-radius: 13px; }
+  .card-body { padding: 9px; }
+  .card-title strong { font-size: 9px; }
+  .card-title small { font-size: 7.5px; }
+  .card-footer { gap: 5px; }
+  .dimension-pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .preview-dialog,
+  .settings-dialog {
+    width: min(100%, 560px);
+    max-height: calc(100vh - 20px);
+  }
+}
+
+@media (max-width: 410px) {
+  .brand-copy { display: none; }
+  .topbar h1 { font-size: 17px; }
+  .scan-card { padding: 13px; }
+  .gallery-grid { grid-template-columns: 1fr; }
+  .result-actions { grid-template-columns: 1fr; }
+  .filter-bar { grid-template-columns: 1fr; }
+  .search-field,
+  .filter-icon-button { grid-column: auto; }
+  .url-box { grid-template-columns: 28px minmax(0, 1fr); }
+}
