@@ -45,10 +45,7 @@
 
   function parseSrcset(value) {
     if (!value) return [];
-    return value
-      .split(',')
-      .map((part) => part.trim().split(/\s+/)[0])
-      .filter(Boolean);
+    return value.split(',').map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
   }
 
   function cssUrls(value) {
@@ -79,6 +76,7 @@
     const seenUrls = new Set();
     const queued = new Map();
     const backgroundInspected = new WeakSet();
+    const observedRoots = new WeakSet();
     let elementsChecked = 0;
     let pass = 0;
     let stableRounds = 0;
@@ -89,7 +87,7 @@
       const url = absoluteUrl(raw);
       if (!url || seenUrls.has(url)) return;
       seenUrls.add(url);
-      const item = {
+      queued.set(url, {
         url,
         source,
         frameUrl: location.href,
@@ -97,8 +95,16 @@
         alt: extra.alt || (element && element.getAttribute && (element.getAttribute('alt') || element.getAttribute('title'))) || '',
         width: Number(extra.width || (element && (element.naturalWidth || element.videoWidth)) || 0),
         height: Number(extra.height || (element && (element.naturalHeight || element.videoHeight)) || 0),
-      };
-      queued.set(url, item);
+      });
+    };
+
+    const inspectPseudo = (element, pseudo) => {
+      try {
+        const style = getComputedStyle(element, pseudo);
+        cssUrls(style.backgroundImage).forEach((url) => add(url, 'background', element));
+        cssUrls(style.content).forEach((url) => add(url, 'background', element));
+        cssUrls(style.maskImage).forEach((url) => add(url, 'background', element));
+      } catch (_) {}
     };
 
     const inspectElement = (element, includeComputedBackground = false) => {
@@ -109,7 +115,7 @@
       if (tag === 'img') {
         add(element.currentSrc, 'image', element);
         add(element.src, 'image', element);
-        ['data-src','data-lazy-src','data-original','data-image','data-url'].forEach((name) => add(element.getAttribute(name), 'image', element));
+        ['data-src','data-lazy-src','data-original','data-image','data-url','data-fallback-src'].forEach((name) => add(element.getAttribute(name), 'image', element));
         if (options.includeSrcset !== false) {
           parseSrcset(element.getAttribute('srcset')).forEach((url) => add(url, 'image', element));
           parseSrcset(element.getAttribute('data-srcset')).forEach((url) => add(url, 'image', element));
@@ -118,18 +124,23 @@
         parseSrcset(element.getAttribute('srcset')).forEach((url) => add(url, 'image', element));
       } else if (tag === 'image') {
         add(element.getAttribute('href') || element.getAttribute('xlink:href'), 'image', element);
+      } else if (tag === 'input' && element.type === 'image') {
+        add(element.src, 'image', element);
+      } else if (tag === 'video') {
+        add(element.poster, 'background', element);
+      } else if (tag === 'object' && element.type && element.type.startsWith('image/')) {
+        add(element.data, 'image', element);
       } else if (tag === 'a' && options.includeLinked !== false) {
-        const href = element.href;
-        if (looksLikeImageLink(href)) add(href, 'linked', element);
+        if (looksLikeImageLink(element.href)) add(element.href, 'linked', element);
       } else if (tag === 'meta') {
         const property = (element.getAttribute('property') || element.getAttribute('name') || '').toLowerCase();
-        if (['og:image','og:image:url','twitter:image','twitter:image:src'].includes(property)) add(element.content, 'meta', element);
+        if (['og:image','og:image:url','og:image:secure_url','twitter:image','twitter:image:src'].includes(property)) add(element.content, 'meta', element);
       } else if (tag === 'link') {
         const rel = (element.rel || '').toLowerCase();
-        if (rel === 'image_src' || (rel.includes('preload') && element.as === 'image')) add(element.href, 'resource', element);
+        if (rel === 'image_src' || rel.includes('icon') || (rel.includes('preload') && element.as === 'image')) add(element.href, 'resource', element);
       }
 
-      ['data-bg','data-background','data-background-image','poster'].forEach((name) => add(element.getAttribute && element.getAttribute(name), 'background', element));
+      ['data-bg','data-background','data-background-image','data-bg-src','poster'].forEach((name) => add(element.getAttribute && element.getAttribute(name), 'background', element));
 
       if (options.includeBackgrounds !== false) {
         const inlineStyle = element.getAttribute && element.getAttribute('style');
@@ -141,7 +152,10 @@
             cssUrls(style.backgroundImage).forEach((url) => add(url, 'background', element));
             cssUrls(style.borderImageSource).forEach((url) => add(url, 'background', element));
             cssUrls(style.maskImage).forEach((url) => add(url, 'background', element));
+            cssUrls(style.listStyleImage).forEach((url) => add(url, 'background', element));
           } catch (_) {}
+          inspectPseudo(element, '::before');
+          inspectPseudo(element, '::after');
         }
       }
     };
@@ -149,17 +163,28 @@
     const inspectResources = () => {
       try {
         performance.getEntriesByType('resource').forEach((entry) => {
-          const type = entry.initiatorType;
-          if (type === 'img' || looksLikeImageLink(entry.name)) add(entry.name, 'resource', null);
+          if (entry.initiatorType === 'img' || looksLikeImageLink(entry.name)) add(entry.name, 'resource', null);
         });
       } catch (_) {}
     };
 
+    const collectRoots = (root, roots = []) => {
+      roots.push(root);
+      if (!root.querySelectorAll) return roots;
+      root.querySelectorAll('*').forEach((element) => {
+        if (element.shadowRoot) collectRoots(element.shadowRoot, roots);
+      });
+      return roots;
+    };
+
+    const inspectRoot = (root, deepBackgroundSweep) => {
+      if (!root.querySelectorAll) return;
+      root.querySelectorAll('img,source,picture,a,image,input[type="image"],video,object,meta,link,[data-src],[data-lazy-src],[data-original],[data-image],[data-url],[data-bg],[data-bg-src],[data-background],[data-background-image],[poster],[style]').forEach((el) => inspectElement(el, false));
+      if (deepBackgroundSweep && options.includeBackgrounds !== false) root.querySelectorAll('*').forEach((el) => inspectElement(el, true));
+    };
+
     const inspectDocument = (deepBackgroundSweep = false) => {
-      document.querySelectorAll('img,source,picture,a,image,meta,link,[data-src],[data-lazy-src],[data-original],[data-image],[data-url],[data-bg],[data-background],[data-background-image],[poster],[style]').forEach((el) => inspectElement(el, false));
-      if (deepBackgroundSweep && options.includeBackgrounds !== false) {
-        document.querySelectorAll('*').forEach((el) => inspectElement(el, true));
-      }
+      collectRoots(document).forEach((root) => inspectRoot(root, deepBackgroundSweep));
       inspectResources();
     };
 
@@ -169,41 +194,39 @@
         queued.clear();
         safeSend({ type: 'SNAPSTREAM_SCAN_BATCH', scanId, images, pass, elementsChecked, phase, frameUrl: location.href });
       }
-      safeSend({
-        type: 'SNAPSTREAM_SCAN_STATUS',
-        scanId,
-        pass,
-        found: seenUrls.size,
-        elementsChecked,
-        phase,
-        frameUrl: location.href,
-        isTopFrame,
-      });
+      safeSend({ type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass, found: seenUrls.size, elementsChecked, phase, frameUrl: location.href, isTopFrame });
     };
 
+    let observeShadowRoots;
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'attributes') {
-          if (mutation.attributeName === 'class' || mutation.attributeName === 'style') {
-            backgroundInspected.delete(mutation.target);
-          }
-          inspectElement(mutation.target, true);
-        }
+        if (mutation.type === 'attributes') inspectElement(mutation.target, true);
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType !== Node.ELEMENT_NODE) return;
           inspectElement(node, true);
-          if (node.querySelectorAll) node.querySelectorAll('img,source,a,image,[style],[data-src],[data-bg]').forEach((el) => inspectElement(el, true));
+          if (node.querySelectorAll) node.querySelectorAll('img,source,a,image,input[type="image"],video,object,[style],[data-src],[data-bg]').forEach((el) => inspectElement(el, true));
+          observeShadowRoots(node);
         });
       }
     });
 
-    observer.observe(document.documentElement, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['src','srcset','href','style','class','data-src','data-srcset','data-lazy-src','data-original','data-image','data-url','data-bg','data-background','poster'],
-    });
+    const observeRoot = (root) => {
+      if (!root || observedRoots.has(root)) return;
+      observedRoots.add(root);
+      observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['src','srcset','href','style','class','content','data-src','data-srcset','data-lazy-src','data-original','data-image','data-url','data-bg','data-bg-src','data-background','poster'],
+      });
+    };
 
+    observeShadowRoots = (root) => {
+      collectRoots(root).forEach((candidate) => observeRoot(candidate));
+    };
+
+    observeRoot(document.documentElement);
+    observeShadowRoots(document);
     inspectDocument(true);
     flush('initial');
 
@@ -211,6 +234,7 @@
       for (let waitPass = 0; waitPass < 12 && !cancelledScans.has(scanId); waitPass += 1) {
         await new Promise((resolve) => setTimeout(resolve, 700));
         pass += 1;
+        observeShadowRoots(document);
         inspectDocument(false);
         flush('frame-watch');
       }
@@ -230,6 +254,7 @@
       window.scrollTo({ top: nextY, behavior: 'auto' });
       await new Promise((resolve) => setTimeout(resolve, config.delay));
 
+      observeShadowRoots(document);
       inspectDocument(round % 8 === 0);
       flush('scrolling');
 
@@ -243,11 +268,11 @@
 
       previousHeight = currentHeight;
       previousCount = seenUrls.size;
-
       if (atBottom && stableRounds >= config.stableRounds) break;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
+    observeShadowRoots(document);
     inspectDocument(true);
     flush(cancelledScans.has(scanId) ? 'cancelled' : 'finalizing');
     observer.disconnect();
