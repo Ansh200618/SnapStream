@@ -183,7 +183,12 @@
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'attributes') inspectElement(mutation.target, true);
+        if (mutation.type === 'attributes') {
+          if (mutation.attributeName === 'class' || mutation.attributeName === 'style') {
+            backgroundInspected.delete(mutation.target);
+          }
+          inspectElement(mutation.target, true);
+        }
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType !== Node.ELEMENT_NODE) return;
           inspectElement(node, true);
