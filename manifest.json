@@ -1,8 +1,8 @@
 {
   "name": "SnapStream - Image Downloader",
-  "description": "Effortlessly discover, filter, and download images from any website",
+  "description": "Deep-scan websites, review image quality, and download images in bulk from a professional workspace.",
   "version": "4.0.0",
-  "minimum_chrome_version": "88",
+  "minimum_chrome_version": "114",
   "manifest_version": 3,
   "permissions": [
     "activeTab",
@@ -16,14 +16,18 @@
     "notifications",
     "unlimitedStorage",
     "scripting",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "action": {
     "default_icon": "images/icon_128.png",
-    "default_popup": "views/popup.html"
+    "default_popup": "views/launcher.html"
+  },
+  "side_panel": {
+    "default_path": "views/dashboard.html"
   },
   "icons": {
     "16": "images/icon_16.png",
@@ -33,7 +37,7 @@
   "background": {
     "service_worker": "src/background/service-worker.js"
   },
-  "options_page": "views/options.html",
+  "options_page": "views/dashboard.html",
   "incognito": "spanning",
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
