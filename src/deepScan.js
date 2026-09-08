@@ -23,10 +23,10 @@
   });
 
   function safeSend(payload) {
-    try {
-      chrome.runtime.sendMessage(payload).catch(() => {});
-    } catch (_) {}
+    try { chrome.runtime.sendMessage(payload).catch(() => {}); } catch (_) {}
   }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function absoluteUrl(value, base = document.baseURI) {
     if (!value || typeof value !== 'string') return null;
@@ -35,12 +35,10 @@
     if (raw.startsWith('data:image/')) return raw;
     try {
       const parsed = new URL(raw, base);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+      if (!['http:', 'https:'].includes(parsed.protocol)) return null;
       parsed.hash = '';
       return parsed.href;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
   function parseSrcset(value) {
@@ -61,7 +59,7 @@
     return /\.(?:avif|bmp|gif|jpe?g|jfif|png|svg|tiff?|webp)(?:$|[?#])/i.test(url || '');
   }
 
-  const JUNK_URL_RE = /(?:^|[\/_\-.])(logo|sprite|icon|favicon|branding|badge|button|btn|arrow|next|prev|previous|loader|loading|spinner|spacer|pixel|blank|transparent|social|facebook|twitter|youtube|instagram|whatsapp|google|advert|advertise|advertisement|banner|ads?|tracking)(?:[\/_\-.]|$)/i;
+  const JUNK_URL_RE = /(?:^|[\/_\-.])(logo|sprite|icon|favicon|branding|badge|button|btn|arrow|loader|loading|spinner|spacer|pixel|blank|transparent|social|facebook|twitter|youtube|instagram|whatsapp|google|advert|advertise|advertisement|banner|ads?|tracking)(?:[\/_\-.]|$)/i;
   const JUNK_CONTEXT_RE = /\b(ad|ads|advert|advertisement|banner|branding|logo|sprite|icon|header|footer|nav|navigation|social|share|widget|promo|promotion|tracking)\b/i;
   const CONTENT_CONTEXT_RE = /\b(photo|photos|picture|pictures|image|images|still|stills|gallery|slide|slideshow|content|main|article|actress|actor|celebrity)\b/i;
 
@@ -69,10 +67,8 @@
     if (!url || url.startsWith('data:image/')) return false;
     try {
       const parsed = new URL(url);
-      return JUNK_URL_RE.test(`${parsed.hostname}${parsed.pathname}`) || /\.(?:ico)(?:$|[?#])/i.test(parsed.pathname);
-    } catch (_) {
-      return JUNK_URL_RE.test(url);
-    }
+      return JUNK_URL_RE.test(`${parsed.hostname}${parsed.pathname}`) || /\.ico$/i.test(parsed.pathname);
+    } catch (_) { return JUNK_URL_RE.test(url); }
   }
 
   function isObviouslyJunkDimensions(width, height) {
@@ -81,49 +77,59 @@
     if (!width || !height) return false;
     if (width <= 90 || height <= 70) return true;
     const ratio = Math.max(width, height) / Math.max(1, Math.min(width, height));
-    if (ratio >= 5 && Math.min(width, height) < 260) return true;
-    return false;
-  }
-
-  function settingsForDepth(depth) {
-    if (depth === 'exhaustive') return { maxRounds: 240, delay: 520, stableRounds: 10, step: 0.72 };
-    if (depth === 'balanced') return { maxRounds: 80, delay: 320, stableRounds: 4, step: 0.9 };
-    return { maxRounds: 160, delay: 440, stableRounds: 7, step: 0.78 };
+    return ratio >= 5 && Math.min(width, height) < 300;
   }
 
   function subjectTokens(doc = document) {
     const raw = `${doc.querySelector('h1')?.textContent || ''} ${doc.title || ''}`.toLowerCase();
-    const stop = new Set(['photos','photo','pictures','picture','stills','still','images','image','gallery','latest','hd','the','and','for','with','aka']);
-    return Array.from(new Set(raw.split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !stop.has(token)))).slice(0, 10);
+    const stop = new Set(['photos','photo','pictures','picture','stills','still','images','image','gallery','latest','wallpaper','wallpapers','the','and','for','with','aka']);
+    return Array.from(new Set(raw.split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !stop.has(token)))).slice(0, 12);
   }
 
-  function detectNumberedGallery() {
-    if (window !== window.top) return null;
-    const text = (document.body?.innerText || '').slice(0, 120000);
-    const counter = text.match(/\b(\d{1,5})\s+of\s+(\d{1,5})\b/i);
-    if (!counter) return null;
-    const total = Number(counter[2]);
-    if (!Number.isInteger(total) || total < 3 || total > 5000) return null;
-
-    const url = new URL(location.href);
-    const match = url.pathname.match(/^(.*?[-_])(\d+)(\.html?)$/i);
+  function readGalleryCounterFromText(text) {
+    const clean = String(text || '').replace(/\s+/g, ' ');
+    const match = clean.match(/\b(\d{1,5})\s*(?:\/|of)\s*(\d{1,5})\b/i);
     if (!match) return null;
+    const current = Number(match[1]);
+    const total = Number(match[2]);
+    if (!Number.isInteger(current) || !Number.isInteger(total) || current < 1 || total < 3 || current > total || total > 10000) return null;
+    return { current, total };
+  }
 
-    return {
-      total,
-      prefix: match[1],
-      suffix: match[3],
-      origin: url.origin,
-      search: url.search,
-      tokens: subjectTokens(document),
-    };
+  function readGalleryCounter(doc) {
+    const likely = Array.from(doc.querySelectorAll('[class*="count"],[class*="counter"],[class*="page"],[id*="count"],[id*="counter"],[id*="page"]'))
+      .map((node) => node.textContent || '')
+      .join(' ');
+    return readGalleryCounterFromText(likely) || readGalleryCounterFromText((doc.body?.innerText || doc.body?.textContent || '').slice(0, 160000));
+  }
+
+  function numericSeries(urlValue) {
+    try {
+      const url = new URL(urlValue);
+      const match = url.pathname.match(/^(.*?[-_])(\d+)(\.html?)$/i);
+      if (!match) return null;
+      return { origin: url.origin, prefix: match[1], number: Number(match[2]), suffix: match[3], search: url.search };
+    } catch (_) { return null; }
+  }
+
+  function sameSeriesUrl(urlValue, series) {
+    const parsed = numericSeries(urlValue);
+    return Boolean(parsed && parsed.origin === series.origin && parsed.prefix === series.prefix && parsed.suffix.toLowerCase() === series.suffix.toLowerCase());
+  }
+
+  function detectNumberedGallery(doc = document, pageUrl = location.href) {
+    if (window !== window.top && doc === document) return null;
+    const counter = readGalleryCounter(doc);
+    const series = numericSeries(pageUrl);
+    if (!counter || !series) return null;
+    return { ...counter, ...series, tokens: subjectTokens(doc) };
   }
 
   function bestImageUrlFromElement(img, pageUrl) {
     const candidates = [];
     parseSrcset(img.getAttribute('srcset')).forEach((value) => candidates.push(value));
     parseSrcset(img.getAttribute('data-srcset')).forEach((value) => candidates.push(value));
-    ['data-original','data-lazy-src','data-src','data-image','data-url','src'].forEach((name) => {
+    ['data-original','data-lazy-src','data-src','data-image','data-url','data-fallback-src','src'].forEach((name) => {
       const value = img.getAttribute(name);
       if (value) candidates.push(value);
     });
@@ -137,9 +143,8 @@
   function scoreGalleryImage(img, pageUrl, tokens) {
     const url = bestImageUrlFromElement(img, pageUrl);
     if (!url) return null;
-
-    const width = Number(img.getAttribute('width')) || 0;
-    const height = Number(img.getAttribute('height')) || 0;
+    const width = Number(img.getAttribute('width')) || Number(img.dataset.width) || 0;
+    const height = Number(img.getAttribute('height')) || Number(img.dataset.height) || 0;
     if (isObviouslyJunkDimensions(width, height)) return null;
 
     const alt = `${img.getAttribute('alt') || ''} ${img.getAttribute('title') || ''}`.trim();
@@ -148,84 +153,191 @@
     const haystack = `${url} ${alt}`.toLowerCase();
     let score = 0;
 
-    if (CONTENT_CONTEXT_RE.test(context)) score += 5;
-    if (JUNK_CONTEXT_RE.test(context)) score -= 9;
-    if (width >= 450 && height >= 450) score += 5;
-    else if (width >= 300 && height >= 300) score += 3;
-    if (width && height && Math.max(width, height) / Math.max(1, Math.min(width, height)) < 3.2) score += 2;
+    if (CONTENT_CONTEXT_RE.test(context)) score += 8;
+    if (JUNK_CONTEXT_RE.test(context)) score -= 14;
+    if (width >= 500 && height >= 500) score += 7;
+    else if (width >= 300 && height >= 300) score += 4;
+    if (width && height && Math.max(width, height) / Math.max(1, Math.min(width, height)) < 3.2) score += 3;
+    if (/watermark/i.test(haystack)) score -= 1;
 
     let tokenHits = 0;
     for (const token of tokens) if (haystack.includes(token)) tokenHits += 1;
-    score += Math.min(10, tokenHits * 3);
+    score += Math.min(15, tokenHits * 4);
 
     const parentLink = img.closest('a[href]');
-    if (parentLink) {
-      try {
-        const href = new URL(parentLink.href, pageUrl);
-        if (/[-_]\d+\.html?$/i.test(href.pathname)) score += 4;
-      } catch (_) {}
-    }
-
-    if (isLikelyJunkUrl(url)) score -= 12;
+    if (parentLink && /[-_]\d+\.html?(?:$|[?#])/i.test(parentLink.href || '')) score += 4;
+    if (isLikelyJunkUrl(url)) score -= 18;
     return { url, alt, width, height, score };
   }
 
-  function extractPrimaryGalleryImage(html, pageUrl, tokens) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+  function extractPrimaryGalleryImage(doc, pageUrl, tokens) {
     const candidates = Array.from(doc.querySelectorAll('img'))
       .map((img) => scoreGalleryImage(img, pageUrl, tokens))
       .filter(Boolean)
       .sort((a, b) => b.score - a.score);
-    if (!candidates.length) return null;
-    const best = candidates[0];
-    if (best.score < 2) return null;
-    return best;
+    return candidates.length && candidates[0].score >= 3 ? candidates[0] : null;
   }
 
-  async function crawlNumberedGallery(scanId, info, add, flush, setProgress) {
-    const urls = [];
-    for (let number = 1; number <= info.total; number += 1) {
-      urls.push(`${info.origin}${info.prefix}${number}${info.suffix}${info.search}`);
+  function extractSeriesLinks(doc, pageUrl, series) {
+    const links = new Set();
+    doc.querySelectorAll('a[href]').forEach((anchor) => {
+      const resolved = absoluteUrl(anchor.getAttribute('href'), pageUrl);
+      if (resolved && sameSeriesUrl(resolved, series)) links.add(resolved);
+    });
+    return Array.from(links);
+  }
+
+  async function fetchGalleryPage(pageUrl, tokens) {
+    const response = await fetch(pageUrl, { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const html = await response.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      doc,
+      counter: readGalleryCounter(doc),
+      image: extractPrimaryGalleryImage(doc, pageUrl, tokens),
+    };
+  }
+
+  async function determineSeriesDirection(info) {
+    if (info.total <= 1) return null;
+    const probes = [info.number + 1, info.number - 1].filter((value) => value > 0);
+    const results = await Promise.all(probes.map(async (number) => {
+      const pageUrl = `${info.origin}${info.prefix}${number}${info.suffix}${info.search}`;
+      try {
+        const page = await fetchGalleryPage(pageUrl, info.tokens);
+        return { number, pageUrl, counter: page.counter, image: page.image };
+      } catch (_) { return null; }
+    }));
+    for (const result of results.filter(Boolean)) {
+      if (!result.counter) continue;
+      const deltaPosition = result.counter.current - info.current;
+      const deltaNumber = result.number - info.number;
+      if (Math.abs(deltaPosition) === 1 && Math.abs(deltaNumber) === 1 && deltaPosition === deltaNumber) return 1;
+      if (Math.abs(deltaPosition) === 1 && Math.abs(deltaNumber) === 1 && deltaPosition === -deltaNumber) return -1;
     }
+    return null;
+  }
 
+  async function crawlNumberedGallery(scanId, info, add, flush) {
     let completed = 0;
-    const concurrency = 6;
-    let cursor = 0;
+    let failed = 0;
+    const visited = new Set();
+    const queued = new Set();
+    const queue = [];
+    const targetTotal = info.total;
+    const series = info;
 
-    async function worker() {
-      while (cursor < urls.length && !cancelledScans.has(scanId)) {
-        const index = cursor++;
-        const pageUrl = urls[index];
-        try {
-          const response = await fetch(pageUrl, { credentials: 'include', cache: 'force-cache' });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const html = await response.text();
-          const image = extractPrimaryGalleryImage(html, pageUrl, info.tokens);
-          if (image) {
-            add(image.url, 'gallery', null, {
-              alt: image.alt,
-              width: image.width,
-              height: image.height,
-              pageUrl,
-            });
-          }
-        } catch (_) {}
-        completed += 1;
-        if (completed % 6 === 0 || completed === urls.length) {
-          setProgress(completed);
-          flush('gallery-crawl');
-          await new Promise((resolve) => setTimeout(resolve, 40));
-        }
+    const enqueue = (url) => {
+      if (!url || queued.has(url) || visited.has(url) || !sameSeriesUrl(url, series)) return;
+      queued.add(url);
+      queue.push(url);
+    };
+
+    const currentUrl = location.href;
+    enqueue(currentUrl);
+    extractSeriesLinks(document, currentUrl, series).forEach(enqueue);
+
+    const direction = await determineSeriesDirection(info);
+    if (direction) {
+      for (let position = 1; position <= targetTotal; position += 1) {
+        const number = info.number + direction * (position - info.current);
+        if (number <= 0) continue;
+        enqueue(`${info.origin}${info.prefix}${number}${info.suffix}${info.search}`);
       }
     }
 
-    await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    return completed;
+    let currentDocHandled = false;
+    const concurrency = direction ? 8 : 4;
+
+    const report = () => {
+      safeSend({
+        type: 'SNAPSTREAM_SCAN_STATUS',
+        scanId,
+        pass: completed,
+        found: undefined,
+        elementsChecked: completed,
+        phase: 'gallery-crawl',
+        frameUrl: location.href,
+        isTopFrame: true,
+        galleryTotal: targetTotal,
+        galleryCompleted: completed,
+        galleryFailed: failed,
+      });
+      flush('gallery-crawl');
+    };
+
+    async function processUrl(pageUrl) {
+      if (visited.has(pageUrl) || cancelledScans.has(scanId)) return;
+      visited.add(pageUrl);
+      queued.delete(pageUrl);
+      try {
+        let doc;
+        let counter;
+        let image;
+        if (!currentDocHandled && pageUrl === currentUrl) {
+          currentDocHandled = true;
+          doc = document;
+          counter = readGalleryCounter(document);
+          image = extractPrimaryGalleryImage(document, currentUrl, info.tokens);
+        } else {
+          const page = await fetchGalleryPage(pageUrl, info.tokens);
+          doc = page.doc;
+          counter = page.counter;
+          image = page.image;
+        }
+
+        if (image) add(image.url, 'gallery', null, { alt: image.alt, width: image.width, height: image.height, pageUrl });
+        extractSeriesLinks(doc, pageUrl, series).forEach(enqueue);
+
+        if (counter && counter.total === targetTotal && !direction) {
+          const pageSeries = numericSeries(pageUrl);
+          if (pageSeries) {
+            const diffPosition = counter.current - info.current;
+            const diffNumber = pageSeries.number - info.number;
+            if (diffPosition !== 0 && Math.abs(diffPosition) === Math.abs(diffNumber)) {
+              const inferredDirection = Math.sign(diffPosition / diffNumber);
+              for (let position = 1; position <= targetTotal; position += 1) {
+                const number = info.number + inferredDirection * (position - info.current);
+                if (number > 0) enqueue(`${info.origin}${info.prefix}${number}${info.suffix}${info.search}`);
+              }
+            }
+          }
+        }
+      } catch (_) {
+        failed += 1;
+      } finally {
+        completed += 1;
+        if (completed % 5 === 0 || completed === targetTotal || queue.length === 0) report();
+      }
+    }
+
+    while (!cancelledScans.has(scanId)) {
+      if (!queue.length) {
+        if (visited.size >= targetTotal) break;
+        await sleep(120);
+        if (!queue.length) break;
+      }
+
+      const batch = queue.splice(0, concurrency);
+      await Promise.all(batch.map(processUrl));
+
+      if (visited.size >= targetTotal) break;
+    }
+
+    report();
+    return { completed: visited.size, failed, expected: targetTotal };
+  }
+
+  function scrollConfig(depth) {
+    if (depth === 'balanced') return { delay: 320, stableRounds: 5, step: 0.92 };
+    if (depth === 'exhaustive') return { delay: 520, stableRounds: 12, step: 0.72 };
+    return { delay: 440, stableRounds: 8, step: 0.8 };
   }
 
   async function runScan(scanId, options) {
     cancelledScans.delete(scanId);
-    const config = settingsForDepth(options.scanDepth || 'deep');
+    const config = scrollConfig(options.scanDepth || 'deep');
     const isTopFrame = window === window.top;
     const originalX = window.scrollX;
     const originalY = window.scrollY;
@@ -269,51 +381,19 @@
     const gallery = detectNumberedGallery();
     if (gallery && isTopFrame) {
       safeSend({
-        type: 'SNAPSTREAM_SCAN_STATUS',
-        scanId,
-        pass: 0,
-        found: 0,
-        elementsChecked: 0,
-        phase: 'gallery-crawl',
-        frameUrl: location.href,
-        isTopFrame: true,
-        galleryTotal: gallery.total,
-        galleryCompleted: 0,
+        type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass: 0, found: 0, elementsChecked: 0,
+        phase: 'gallery-crawl', frameUrl: location.href, isTopFrame: true,
+        galleryTotal: gallery.total, galleryCompleted: 0,
       });
 
-      await crawlNumberedGallery(
-        scanId,
-        gallery,
-        add,
-        flush,
-        (completed) => {
-          pass = completed;
-          elementsChecked = completed;
-          safeSend({
-            type: 'SNAPSTREAM_SCAN_STATUS',
-            scanId,
-            pass,
-            found: seenUrls.size,
-            elementsChecked,
-            phase: 'gallery-crawl',
-            frameUrl: location.href,
-            isTopFrame: true,
-            galleryTotal: gallery.total,
-            galleryCompleted: completed,
-          });
-        }
-      );
-
+      const result = await crawlNumberedGallery(scanId, gallery, add, flush);
+      pass = result.completed;
+      elementsChecked = result.completed;
       flush(cancelledScans.has(scanId) ? 'cancelled' : 'finalizing');
       safeSend({
-        type: 'SNAPSTREAM_SCAN_FRAME_DONE',
-        scanId,
-        found: seenUrls.size,
-        pass,
-        elementsChecked,
-        frameUrl: location.href,
-        isTopFrame: true,
-        cancelled: cancelledScans.has(scanId),
+        type: 'SNAPSTREAM_SCAN_FRAME_DONE', scanId, found: seenUrls.size, pass, elementsChecked,
+        frameUrl: location.href, isTopFrame: true, cancelled: cancelledScans.has(scanId),
+        galleryTotal: gallery.total, galleryCompleted: result.completed, galleryFailed: result.failed,
       });
       return;
     }
@@ -363,8 +443,7 @@
       ['data-bg','data-background','data-background-image','data-bg-src','poster'].forEach((name) => add(element.getAttribute && element.getAttribute(name), 'background', element));
 
       if (options.includeBackgrounds !== false) {
-        const inlineStyle = element.getAttribute && element.getAttribute('style');
-        cssUrls(inlineStyle).forEach((url) => add(url, 'background', element));
+        cssUrls(element.getAttribute && element.getAttribute('style')).forEach((url) => add(url, 'background', element));
         if (includeComputedBackground && !backgroundInspected.has(element)) {
           backgroundInspected.add(element);
           try {
@@ -391,9 +470,7 @@
     const collectRoots = (root, roots = []) => {
       roots.push(root);
       if (!root.querySelectorAll) return roots;
-      root.querySelectorAll('*').forEach((element) => {
-        if (element.shadowRoot) collectRoots(element.shadowRoot, roots);
-      });
+      root.querySelectorAll('*').forEach((element) => { if (element.shadowRoot) collectRoots(element.shadowRoot, roots); });
       return roots;
     };
 
@@ -425,17 +502,12 @@
       if (!root || observedRoots.has(root)) return;
       observedRoots.add(root);
       observer.observe(root, {
-        subtree: true,
-        childList: true,
-        attributes: true,
+        subtree: true, childList: true, attributes: true,
         attributeFilter: ['src','srcset','href','style','class','content','data-src','data-srcset','data-lazy-src','data-original','data-image','data-url','data-bg','data-bg-src','data-background','poster'],
       });
     };
 
-    observeShadowRoots = (root) => {
-      collectRoots(root).forEach((candidate) => observeRoot(candidate));
-    };
-
+    observeShadowRoots = (root) => collectRoots(root).forEach(observeRoot);
     observeRoot(document.documentElement);
     observeShadowRoots(document);
     inspectDocument(true);
@@ -443,7 +515,7 @@
 
     if (!isTopFrame) {
       for (let waitPass = 0; waitPass < 12 && !cancelledScans.has(scanId); waitPass += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 700));
+        await sleep(700);
         pass += 1;
         observeShadowRoots(document);
         inspectDocument(false);
@@ -456,33 +528,42 @@
 
     safeSend({ type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass, found: seenUrls.size, elementsChecked, phase: 'scrolling', frameUrl: location.href, isTopFrame: true });
 
-    for (let round = 0; round < config.maxRounds && !cancelledScans.has(scanId); round += 1) {
-      pass = round + 1;
+    // Deliberately no fixed pass/time limit. Completion is based only on reaching the real
+    // bottom and observing no document growth and no new images for several verification rounds.
+    while (!cancelledScans.has(scanId)) {
+      pass += 1;
       const viewport = Math.max(window.innerHeight || 0, 600);
-      const currentPageHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
-      const maxScroll = Math.max(0, currentPageHeight - viewport);
+      const beforeHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+      const maxScroll = Math.max(0, beforeHeight - viewport);
       const nextY = Math.min(maxScroll, window.scrollY + Math.max(420, Math.round(viewport * config.step)));
       window.scrollTo({ top: nextY, behavior: 'auto' });
-      await new Promise((resolve) => setTimeout(resolve, config.delay));
+      await sleep(config.delay);
 
       observeShadowRoots(document);
-      inspectDocument(round % 8 === 0);
+      inspectDocument(pass % 8 === 0);
       flush('scrolling');
 
       const currentHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
-      const atBottom = window.scrollY + viewport >= currentHeight - 8;
+      const atBottom = window.scrollY + viewport >= currentHeight - 12;
       const noGrowth = currentHeight <= previousHeight + 2;
       const noNewImages = seenUrls.size === previousCount;
 
-      if (atBottom && noGrowth && noNewImages) stableRounds += 1;
-      else stableRounds = 0;
+      if (atBottom && noGrowth && noNewImages) {
+        stableRounds += 1;
+        // Re-trigger common lazy loaders before declaring completion.
+        window.dispatchEvent(new Event('scroll'));
+        window.dispatchEvent(new Event('resize'));
+        await sleep(Math.min(900, config.delay + 220));
+      } else {
+        stableRounds = 0;
+      }
 
       previousHeight = currentHeight;
       previousCount = seenUrls.size;
       if (atBottom && stableRounds >= config.stableRounds) break;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(650);
     observeShadowRoots(document);
     inspectDocument(true);
     flush(cancelledScans.has(scanId) ? 'cancelled' : 'finalizing');
@@ -491,14 +572,8 @@
     if (options.restoreScroll !== false) window.scrollTo(originalX, originalY);
 
     safeSend({
-      type: 'SNAPSTREAM_SCAN_FRAME_DONE',
-      scanId,
-      found: seenUrls.size,
-      pass,
-      elementsChecked,
-      frameUrl: location.href,
-      isTopFrame: true,
-      cancelled: cancelledScans.has(scanId),
+      type: 'SNAPSTREAM_SCAN_FRAME_DONE', scanId, found: seenUrls.size, pass, elementsChecked,
+      frameUrl: location.href, isTopFrame: true, cancelled: cancelledScans.has(scanId),
     });
   }
 })();
