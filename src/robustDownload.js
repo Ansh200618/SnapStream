@@ -1,7 +1,9 @@
 /**
- * Robust image download utility
- * Fetches image data, validates Content-Type, and downloads with correct extension.
- * Also provides a dependency-free ZIP bulk download flow for the SnapStream workspace.
+ * Robust image download utility.
+ * - Validates image responses when possible.
+ * - Prepares a referrer rule for protected/hotlink-sensitive sites.
+ * - Falls back to Chrome's native download path when a protected host blocks extension fetches.
+ * - Builds dependency-free ZIP files for selected bulk downloads.
  */
 
 const MIME_TYPE_TO_EXTENSION = {
@@ -19,6 +21,18 @@ const MIME_TYPE_TO_EXTENSION = {
   'image/x-tiff': 'tiff',
   'image/jfif': 'jfif',
 };
+
+const SNAPSHOT_KEYS = [
+  'snapstreamWorkspaceSnapshotV3',
+  'snapstreamWorkspaceSnapshotV2',
+  'snapstreamWorkspaceSettings',
+];
+
+const PROTECTED_STATUS_CODES = new Set([401, 403, 429]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function getExtensionFromContentType(contentType) {
   if (!contentType) return null;
@@ -70,20 +84,196 @@ function sanitizeDownloadFolder(value) {
     .trim();
 }
 
+function normalizeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    url.hash = '';
+    return url.href;
+  } catch (_) {
+    return '';
+  }
+}
+
+function sameOriginFallbackReferrer(url) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function filenameWithExtension(url, filename, extension) {
+  let output = filename;
+  if (!output) {
+    try {
+      const urlPath = new URL(url).pathname;
+      const urlFilename = decodeURIComponent(urlPath.split('/').pop() || '');
+      output = urlFilename && urlFilename.includes('.')
+        ? urlFilename.replace(/\.[^.]+$/, `.${extension}`)
+        : `image_${Date.now()}.${extension}`;
+    } catch (_) {
+      output = `image_${Date.now()}.${extension}`;
+    }
+  } else if (!output.includes('.')) {
+    output = `${output}.${extension}`;
+  } else {
+    output = output.replace(/\.[^.]+$/, `.${extension}`);
+  }
+  return output;
+}
+
+async function getStoredImageContext(url) {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
+  try {
+    const stored = await chrome.storage.local.get(SNAPSHOT_KEYS);
+    const snapshot = stored.snapstreamWorkspaceSnapshotV3 || stored.snapstreamWorkspaceSnapshotV2 || {};
+    const images = Array.isArray(snapshot.images) ? snapshot.images : [];
+    const item = images.find((image) => image && image.url === url) || null;
+    return item ? { ...item, targetUrl: snapshot.targetUrl || '' } : { targetUrl: snapshot.targetUrl || '' };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function prepareDownloadRequest(url, options = {}) {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return '';
+
+  const context = options.item || await getStoredImageContext(url);
+  const referrerUrl = normalizeHttpUrl(
+    options.referrerUrl ||
+    options.pageUrl ||
+    options.frameUrl ||
+    context?.pageUrl ||
+    context?.frameUrl ||
+    context?.targetUrl ||
+    sameOriginFallbackReferrer(url)
+  );
+
+  if (!referrerUrl) return '';
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'SNAPSTREAM_PREPARE_DOWNLOAD',
+      resourceUrl: url,
+      referrerUrl,
+    });
+    await sleep(90);
+    return referrerUrl;
+  } catch (error) {
+    console.warn('[SnapStream] Could not prepare protected-site download referrer:', error);
+    return referrerUrl;
+  }
+}
+
+async function fetchWithPreparedReferrer(url, options = {}) {
+  const referrerUrl = await prepareDownloadRequest(url, options);
+  let response = await fetch(url, {
+    credentials: 'include',
+    cache: 'no-store',
+    signal: options.signal,
+  });
+
+  if (!response.ok && PROTECTED_STATUS_CODES.has(response.status)) {
+    const fallbackReferrer = sameOriginFallbackReferrer(url);
+    if (fallbackReferrer && fallbackReferrer !== referrerUrl) {
+      await prepareDownloadRequest(url, { ...options, referrerUrl: fallbackReferrer });
+      response = await fetch(url, {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: options.signal,
+      });
+    }
+  }
+
+  return response;
+}
+
+function downloadObjectUrl(objectUrl, filename, options = {}) {
+  return new Promise((resolve) => {
+    chrome.downloads.download({
+      url: objectUrl,
+      filename,
+      saveAs: Boolean(options.saveAs),
+      conflictAction: 'uniquify',
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        URL.revokeObjectURL(objectUrl);
+        resolve({
+          success: false,
+          error: chrome.runtime.lastError.message,
+          url: options.originalUrl || objectUrl,
+        });
+        return;
+      }
+
+      const listener = (delta) => {
+        if (delta.id === downloadId && delta.state) {
+          if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+            chrome.downloads.onChanged.removeListener(listener);
+            URL.revokeObjectURL(objectUrl);
+          }
+        }
+      };
+      chrome.downloads.onChanged.addListener(listener);
+
+      resolve({
+        success: true,
+        downloadId,
+        url: options.originalUrl || objectUrl,
+        filename,
+        extension: options.extension,
+      });
+    });
+  });
+}
+
+async function nativeDownloadFallback(url, options = {}, reason = '') {
+  await prepareDownloadRequest(url, options);
+  const extension = extensionFor(url, '');
+  const filename = filenameWithExtension(url, options.filename, extension);
+
+  return new Promise((resolve) => {
+    chrome.downloads.download({
+      url,
+      filename,
+      saveAs: Boolean(options.saveAs),
+      conflictAction: 'uniquify',
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        resolve({
+          success: false,
+          error: chrome.runtime.lastError.message,
+          url,
+          fallbackReason: reason,
+        });
+        return;
+      }
+
+      resolve({
+        success: true,
+        downloadId,
+        url,
+        filename,
+        extension,
+        usedNativeFallback: Boolean(reason),
+        fallbackReason: reason,
+      });
+    });
+  });
+}
+
 export async function downloadImageRobustly(url, options = {}) {
   try {
-    const response = await fetch(url);
+    const response = await fetchWithPreparedReferrer(url, options);
 
     if (!response.ok) {
-      console.error(`[SnapStream] Server returned status: ${response.status} for URL: ${url}`);
-      return {
-        success: false,
-        error: `Server returned status ${response.status}`,
-        url,
-      };
+      console.warn(`[SnapStream] Fetch returned HTTP ${response.status}; trying browser-native download fallback for: ${url}`);
+      return nativeDownloadFallback(url, options, `HTTP ${response.status}`);
     }
 
-    const contentType = response.headers.get('content-type');
+    const contentType = response.headers.get('content-type') || '';
 
     if (isHtmlContentType(contentType)) {
       console.warn(`[SnapStream] Aborting: URL returned an HTML page, not an image: ${url}`);
@@ -95,74 +285,27 @@ export async function downloadImageRobustly(url, options = {}) {
       };
     }
 
-    if (!isImageContentType(contentType)) {
-      console.warn(`[SnapStream] Warning: Content-Type is not an image type: ${contentType} for URL: ${url}`);
+    if (contentType && !isImageContentType(contentType)) {
+      console.warn(`[SnapStream] Content-Type is not image/* (${contentType}); using file extension fallback for: ${url}`);
     }
 
     const extension = extensionFor(url, contentType);
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
+    const filename = filenameWithExtension(url, options.filename, extension);
 
-    let filename = options.filename;
-    if (!filename) {
-      try {
-        const urlPath = new URL(url).pathname;
-        const urlFilename = decodeURIComponent(urlPath.split('/').pop() || '');
-        filename = urlFilename && urlFilename.includes('.')
-          ? urlFilename.replace(/\.[^.]+$/, `.${extension}`)
-          : `image_${Date.now()}.${extension}`;
-      } catch (_) {
-        filename = `image_${Date.now()}.${extension}`;
-      }
-    } else if (!filename.includes('.')) {
-      filename = `${filename}.${extension}`;
-    } else {
-      filename = filename.replace(/\.[^.]+$/, `.${extension}`);
-    }
-
-    return new Promise((resolve) => {
-      chrome.downloads.download({
-        url: objectUrl,
-        filename,
-        saveAs: options.saveAs || false,
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('[SnapStream] Download failed:', chrome.runtime.lastError);
-          URL.revokeObjectURL(objectUrl);
-          resolve({
-            success: false,
-            error: chrome.runtime.lastError.message,
-            url,
-          });
-          return;
-        }
-
-        const listener = (delta) => {
-          if (delta.id === downloadId && delta.state) {
-            if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
-              chrome.downloads.onChanged.removeListener(listener);
-              URL.revokeObjectURL(objectUrl);
-            }
-          }
-        };
-        chrome.downloads.onChanged.addListener(listener);
-
-        resolve({
-          success: true,
-          downloadId,
-          url,
-          filename,
-          extension,
-        });
-      });
+    return downloadObjectUrl(objectUrl, filename, {
+      ...options,
+      originalUrl: url,
+      extension,
     });
   } catch (error) {
-    console.error(`[SnapStream] Download failed for URL: ${url}`, error);
-    return {
-      success: false,
-      error: error.message,
-      url,
-    };
+    if (error && error.name === 'AbortError') {
+      return { success: false, error: 'Download cancelled', url };
+    }
+
+    console.warn(`[SnapStream] Fetch download failed; trying browser-native fallback for: ${url}`, error);
+    return nativeDownloadFallback(url, options, error?.message || String(error));
   }
 }
 
@@ -177,7 +320,6 @@ export async function downloadImagesRobustly(urls, options = {}) {
   for (const url of urls) {
     const result = await downloadImageRobustly(url, options);
     results.details.push(result);
-
     if (result.success) results.successful += 1;
     else results.failed += 1;
   }
@@ -297,8 +439,16 @@ function buildZipBlob(entries) {
 }
 
 async function fetchZipEntry(item, index, total, settings, signal) {
-  const response = await fetch(item.url, { credentials: 'include', cache: 'no-store', signal });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const response = await fetchWithPreparedReferrer(item.url, {
+    item,
+    pageUrl: item.pageUrl || settings.targetUrl,
+    frameUrl: item.frameUrl,
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
 
   const contentType = response.headers.get('content-type') || '';
   if (isHtmlContentType(contentType)) throw new Error('URL returned HTML instead of image');
@@ -331,16 +481,11 @@ function uniqueZipEntryNames(entries) {
 }
 
 async function readSelectedZipItems() {
-  await new Promise((resolve) => setTimeout(resolve, 420));
+  await sleep(420);
 
-  const stored = await chrome.storage.local.get([
-    'snapstreamWorkspaceSnapshotV3',
-    'snapstreamWorkspaceSnapshotV2',
-    'snapstreamWorkspaceSettings',
-  ]);
-
+  const stored = await chrome.storage.local.get(SNAPSHOT_KEYS);
   const snapshot = stored.snapstreamWorkspaceSnapshotV3 || stored.snapstreamWorkspaceSnapshotV2 || {};
-  const settings = stored.snapstreamWorkspaceSettings || {};
+  const settings = { ...(stored.snapstreamWorkspaceSettings || {}), targetUrl: snapshot.targetUrl || '' };
   const images = new Map();
   const selected = new Set(Array.isArray(snapshot.selected) ? snapshot.selected : []);
 
@@ -359,6 +504,7 @@ async function readSelectedZipItems() {
         url,
         alt: card.querySelector('.card-title strong')?.textContent || '',
         orderIndex: Number((card.querySelector('.order-badge')?.textContent || '').replace(/\D+/g, '')) || 0,
+        pageUrl: snapshot.targetUrl || '',
       });
     }
   });
@@ -462,7 +608,7 @@ export async function downloadSelectedImagesAsZip() {
   zipAbortController = new AbortController();
   const signal = zipAbortController.signal;
   const entries = [];
-  let failed = 0;
+  const failedItems = [];
 
   try {
     setZipDialog('Preparing ZIP', `${items.length.toLocaleString()} selected images will be saved as one ZIP file.`, 4, true);
@@ -479,12 +625,14 @@ export async function downloadSelectedImagesAsZip() {
       try {
         entries.push(await fetchZipEntry(item, i, items.length, settings, signal));
       } catch (error) {
-        failed += 1;
+        failedItems.push({ item, error: error?.message || String(error) });
         console.warn('[SnapStream] Could not add image to ZIP:', item.url, error);
       }
     }
 
-    if (!entries.length) throw new Error('No images could be added to the ZIP file.');
+    if (!entries.length) {
+      throw new Error('No images could be added to the ZIP file. The website may be blocking direct downloads. Try opening the image page once, then run ZIP again.');
+    }
 
     setZipDialog('Building ZIP file', 'Creating one downloadable ZIP package…', 84, true);
     const zipBlob = buildZipBlob(uniqueZipEntryNames(entries));
@@ -494,7 +642,7 @@ export async function downloadSelectedImagesAsZip() {
     setZipDialog('Starting ZIP download', `${entries.length.toLocaleString()} images packed into ${filename}.`, 96, true);
 
     await new Promise((resolve, reject) => {
-      chrome.downloads.download({ url: objectUrl, filename, saveAs: false }, (downloadId) => {
+      chrome.downloads.download({ url: objectUrl, filename, saveAs: false, conflictAction: 'uniquify' }, (downloadId) => {
         if (chrome.runtime.lastError) {
           URL.revokeObjectURL(objectUrl);
           reject(new Error(chrome.runtime.lastError.message));
@@ -514,13 +662,14 @@ export async function downloadSelectedImagesAsZip() {
       });
     });
 
+    const failText = failedItems.length ? ` · ${failedItems.length.toLocaleString()} skipped by the site` : '';
     setZipDialog(
       'ZIP download started',
-      `${entries.length.toLocaleString()} images added${failed ? ` · ${failed.toLocaleString()} failed` : ''}. Only one browser download was created.`,
+      `${entries.length.toLocaleString()} images added${failText}. Only one browser download was created.`,
       100,
       false,
     );
-    showZipToast('ZIP download started', `${entries.length.toLocaleString()} images packed into one file.`);
+    showZipToast('ZIP download started', `${entries.length.toLocaleString()} images packed into one file${failText}.`);
   } catch (error) {
     const cancelled = error && error.name === 'AbortError';
     setZipDialog(
@@ -532,6 +681,7 @@ export async function downloadSelectedImagesAsZip() {
     showZipToast(cancelled ? 'ZIP cancelled' : 'ZIP failed', cancelled ? '' : (error.message || String(error)), cancelled ? 'info' : 'error');
   } finally {
     zipAbortController = null;
+    updateZipButtons();
   }
 }
 
