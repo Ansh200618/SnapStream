@@ -30,8 +30,8 @@
       </div>
 
       <div class="side-note">
-        <span>Order-safe mode</span>
-        <small>Website order is kept while images stream in.</small>
+        <span>Deep scan restored</span>
+        <small>The normal scanner is default again for numbered galleries like 1/613.</small>
       </div>
 
       <button class="new-tab-button" id="open-full-workspace" type="button"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="m20 4-8 8"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg><span>Open full workspace</span></button>
@@ -98,6 +98,7 @@
           <div class="result-actions">
             <button class="secondary-button" id="select-visible" type="button">Select visible</button>
             <button class="primary-button" id="download-selected" type="button" disabled><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>Download selected</span><span class="button-count" id="selected-count">0</span></button>
+            <button class="secondary-button" id="download-zip" type="button" disabled><span>Download ZIP</span></button>
           </div>
         </div>
 
@@ -167,9 +168,9 @@
       <p class="bulk-lead">You selected <strong id="bulk-count">0</strong> images. If your browser has <strong>Ask where to save each file before downloading</strong> turned on, it can show a Save dialog for every image.</p>
       <div class="bulk-folder-card"><span>SnapStream will save into</span><strong id="bulk-folder">Downloads/SnapStream</strong><small>Change this subfolder from Settings → Downloads before continuing.</small></div>
       <ol class="bulk-steps">
-        <li>Open browser Download settings.</li>
+        <li>Use <strong>Download ZIP</strong> for one-file bulk download.</li>
+        <li>For individual downloads, open browser Download settings.</li>
         <li>Turn off <strong>Ask where to save each file before downloading</strong>.</li>
-        <li>Choose or confirm your browser Downloads location.</li>
         <li>Come back here and continue. Your selected images will stay selected.</li>
       </ol>
       <div class="bulk-actions">
@@ -221,6 +222,6 @@
   </div>
 
   <script type="module" src="../src/dashboard.js"></script>
-  <script type="module" src="../src/visibleMultiPageScan.js"></script>
+  <script type="module" src="../src/dashboardCoreFixes.js"></script>
 </body>
 </html>
