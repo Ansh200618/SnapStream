@@ -24,41 +24,78 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Restore SnapStream icon
+        shell: pwsh
+        run: |
+          $b64 = Get-Content 'installer/windows/SnapStreamInstaller/SnapStream.ico.b64' -Raw
+          [IO.File]::WriteAllBytes('installer/windows/SnapStreamInstaller/SnapStream.ico', [Convert]::FromBase64String($b64.Trim()))
+
       - name: Restore
         run: dotnet restore installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj
 
-      - name: Publish lite EXE
-        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=None -p:DebugSymbols=false -o dist/windows-lite
+      - name: Publish SnapStream Manager
+        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/windows
 
-      - name: Publish compressed full EXE
-        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/windows-full
-
-      - name: Prepare release files
+      - name: Verify app output
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
+          if (-not (Test-Path 'dist/windows/SnapStream.exe')) { throw 'SnapStream.exe was not produced.' }
+          $v = (Get-Item 'dist/windows/SnapStream.exe').VersionInfo
+          Write-Host "Built $($v.ProductName) $($v.FileVersion)"
 
-          $lite = Get-ChildItem dist/windows-lite -Filter 'SnapStream.exe' | Select-Object -First 1
-          if (-not $lite) { $lite = Get-ChildItem dist/windows-lite -Filter 'SnapStreamSetup.exe' | Select-Object -First 1 }
-          if (-not $lite) { throw 'Lite EXE was not produced.' }
-          Copy-Item $lite.FullName 'dist/SnapStreamSetup-Lite.exe' -Force
+      - name: Optional Authenticode sign app
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host 'No signing certificate configured; app remains unsigned.'
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'snapstream-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe not found.' }
+          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD 'dist/windows/SnapStream.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Signing SnapStream.exe failed.' }
 
-          $full = Get-ChildItem dist/windows-full -Filter 'SnapStream.exe' | Select-Object -First 1
-          if (-not $full) { $full = Get-ChildItem dist/windows-full -Filter 'SnapStreamSetup.exe' | Select-Object -First 1 }
-          if (-not $full) { throw 'Full EXE was not produced.' }
-          Copy-Item $full.FullName 'dist/SnapStreamSetup-Full.exe' -Force
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw 'Inno Setup compiler is unavailable.' }
 
-          Copy-Item 'dist/SnapStreamSetup-Lite.exe' 'dist/SnapStreamSetup.exe' -Force
+      - name: Build installed Windows app setup
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer/windows/SnapStreamInstaller/SnapStreamSetup.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup build failed.' }
+          if (-not (Test-Path 'dist/SnapStreamSetup.exe')) { throw 'SnapStreamSetup.exe was not produced.' }
 
-          $liteHash = (Get-FileHash 'dist/SnapStreamSetup-Lite.exe' -Algorithm SHA256).Hash.ToLower()
-          $fullHash = (Get-FileHash 'dist/SnapStreamSetup-Full.exe' -Algorithm SHA256).Hash.ToLower()
-          $defaultHash = (Get-FileHash 'dist/SnapStreamSetup.exe' -Algorithm SHA256).Hash.ToLower()
+      - name: Optional Authenticode sign installer
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host 'No signing certificate configured; installer remains unsigned.'
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'snapstream-signing.pfx'
+          if (-not (Test-Path $pfx)) { [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64)) }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD 'dist/SnapStreamSetup.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Signing SnapStreamSetup.exe failed.' }
 
-          "$liteHash  SnapStreamSetup-Lite.exe" | Set-Content 'dist/SnapStreamSetup-Lite.sha256' -Encoding ascii
-          "$fullHash  SnapStreamSetup-Full.exe" | Set-Content 'dist/SnapStreamSetup-Full.sha256' -Encoding ascii
-          "$defaultHash  SnapStreamSetup.exe" | Set-Content 'dist/SnapStreamSetup.sha256' -Encoding ascii
-
-          Get-ChildItem dist -Filter 'SnapStreamSetup*.exe' | Select-Object Name,Length
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash 'dist/SnapStreamSetup.exe' -Algorithm SHA256).Hash.ToLower()
+          "$hash  SnapStreamSetup.exe" | Set-Content 'dist/SnapStreamSetup.sha256' -Encoding ascii
+          Get-Item 'dist/SnapStreamSetup.exe' | Select-Object Name,Length
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -67,10 +104,6 @@ jobs:
           path: |
             dist/SnapStreamSetup.exe
             dist/SnapStreamSetup.sha256
-            dist/SnapStreamSetup-Lite.exe
-            dist/SnapStreamSetup-Lite.sha256
-            dist/SnapStreamSetup-Full.exe
-            dist/SnapStreamSetup-Full.sha256
           if-no-files-found: error
 
       - name: Publish stable installer download
@@ -80,13 +113,7 @@ jobs:
         run: |
           gh release view installer-latest --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Latest development installer for SnapStream. Lite is the small download and Full is the self-contained fallback. Built from this public repository by GitHub Actions.'
+            gh release create installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Installable SnapStream Windows Manager.'
           }
-          gh release upload installer-latest `
-            dist/SnapStreamSetup.exe `
-            dist/SnapStreamSetup.sha256 `
-            dist/SnapStreamSetup-Lite.exe `
-            dist/SnapStreamSetup-Lite.sha256 `
-            dist/SnapStreamSetup-Full.exe `
-            dist/SnapStreamSetup-Full.sha256 `
-            --clobber --repo $env:GITHUB_REPOSITORY
+          gh release edit installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Installs SnapStream as a Windows app with Start Menu/optional Desktop shortcut, automatic GitHub extension update checks, browser detection, and guided first-time browser activation. Chrome-based browsers still require one manual Developer mode + Load unpacked approval for off-store activation.'
+          gh release upload installer-latest dist/SnapStreamSetup.exe dist/SnapStreamSetup.sha256 --clobber --repo $env:GITHUB_REPOSITORY
