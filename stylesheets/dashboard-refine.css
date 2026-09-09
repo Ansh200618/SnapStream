@@ -1,4 +1,4 @@
-/* SnapStream v5.0.2 responsive refinements */
+/* SnapStream v5.0.3 responsive and high-DPI refinements */
 
 /* Keep controls from visually colliding in medium and side-panel widths. */
 .scan-card,
@@ -26,11 +26,152 @@
 #scan-status-detail {
   white-space: normal !important;
   overflow-wrap: anywhere;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .progress-track > div {
   max-width: 100%;
+}
+
+/* High-DPI readability: the original workspace used many 8–11px labels, which becomes too small on 4K screens. */
+body {
+  font-size: 15px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.brand-copy strong { font-size: 16px; }
+.brand-copy small { font-size: 12px; }
+.nav-item span,
+.new-tab-button span { font-size: 13px; }
+.summary-label,
+.top-eyebrow,
+.section-kicker { font-size: 11px; }
+.side-summary strong { font-size: 18px; }
+.side-summary small { font-size: 12px; }
+h1 { font-size: clamp(28px, 2vw, 34px); }
+h2 { font-size: clamp(23px, 1.6vw, 29px); }
+h3 { font-size: 17px; }
+p { font-size: 14px; }
+.scan-heading p { font-size: 14px; }
+.depth-pill { font-size: 12px; min-height: 34px; padding-inline: 13px; }
+.url-box input,
+.search-field input,
+.filter-bar select,
+.text-button,
+.scan-button,
+.primary-button,
+.secondary-button,
+.stop-button,
+.disabled-button,
+.load-more { font-size: 13px; }
+.scan-state strong { font-size: 14px; }
+.scan-state small { font-size: 12px; }
+.scan-metrics { font-size: 12px; }
+.scan-metrics strong { font-size: 13px; }
+.ai-strip strong { font-size: 14px; }
+.ai-strip small { font-size: 12px; }
+.coming-pill,
+.source-badge,
+.dimension-pill,
+.button-count { font-size: 11px; }
+.card-title strong { font-size: 14px; }
+.card-title small { font-size: 12px; }
+.setting-row strong { font-size: 14px; }
+.setting-row small { font-size: 12px; line-height: 1.45; }
+.setting-row select,
+.setting-row input[type='text'],
+.setting-row input[type='number'] { font-size: 13px; min-height: 40px; }
+.toast strong { font-size: 14px; }
+.toast span { font-size: 12px; }
+
+/* Bulk download guide. */
+.bulk-dialog {
+  position: relative;
+  width: min(94vw, 620px);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(226,229,238,.95);
+  border-radius: 28px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(101,88,255,.12), transparent 34%),
+    linear-gradient(180deg, #fff, #f8f9ff);
+  box-shadow: 0 30px 90px rgba(24, 29, 56, .25);
+}
+
+.bulk-dialog h2 {
+  margin-top: 8px;
+}
+
+.bulk-lead {
+  margin: 12px 42px 18px 0;
+  color: #555b70;
+}
+
+.bulk-folder-card {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid rgba(101,88,255,.16);
+  border-radius: 18px;
+  background: #f5f3ff;
+}
+
+.bulk-folder-card span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.bulk-folder-card strong {
+  color: var(--ink);
+  font-size: 18px;
+  word-break: break-word;
+}
+
+.bulk-folder-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bulk-steps {
+  margin: 18px 0 0;
+  padding-left: 22px;
+  color: #4d5368;
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.bulk-actions {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bulk-actions > button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.text-danger-button {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(229,82,95,.18);
+  border-radius: 11px;
+  color: var(--danger);
+  background: rgba(229,82,95,.06);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.text-danger-button:hover {
+  background: rgba(229,82,95,.1);
 }
 
 /* Full workspace: preserve breathing room on laptops. */
@@ -44,14 +185,14 @@
 
 /* Chrome side panel commonly lives around 360–520px wide. */
 @media (max-width: 640px) {
-  body { min-width: 0; }
+  body { min-width: 0; font-size: 14px; }
   .app-shell { display: block; }
 
   .sidebar {
     position: sticky;
     top: 0;
     width: 100%;
-    height: 62px;
+    height: 66px;
     padding: 9px 12px;
     flex-direction: row;
     align-items: center;
@@ -62,20 +203,20 @@
   }
 
   .side-brand { margin-right: auto; padding: 0; }
-  .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
-  .brand-mark svg { width: 20px; height: 20px; }
-  .brand-copy strong { font-size: 12px; }
+  .brand-mark { width: 38px; height: 38px; border-radius: 12px; }
+  .brand-mark svg { width: 21px; height: 21px; }
+  .brand-copy strong { font-size: 14px; }
   .brand-copy small { display: none; }
 
   .side-nav { display: flex; gap: 4px; }
   .nav-item,
   .new-tab-button {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
     padding: 0;
     justify-content: center;
-    border-radius: 10px;
+    border-radius: 11px;
   }
   .nav-item span,
   .new-tab-button span,
@@ -88,11 +229,11 @@
   }
 
   .topbar {
-    min-height: 76px;
+    min-height: 82px;
     padding: 10px 2px;
   }
-  .topbar h1 { font-size: 19px; }
-  .top-eyebrow { font-size: 7.5px; }
+  .topbar h1 { font-size: 23px; }
+  .top-eyebrow { font-size: 10px; }
 
   .scan-card {
     margin-top: 12px;
@@ -105,27 +246,27 @@
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  .scan-heading h2 { font-size: 18px; }
-  .scan-heading p { font-size: 10px; line-height: 1.5; }
+  .scan-heading h2 { font-size: 22px; }
+  .scan-heading p { font-size: 13px; line-height: 1.55; }
   .depth-pill { justify-self: start; }
 
   .url-box {
     margin-top: 16px;
     padding: 7px;
-    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-columns: 32px minmax(0, 1fr);
     gap: 6px;
     border-radius: 15px;
   }
-  .url-icon { width: 30px; }
+  .url-icon { width: 32px; }
   .url-box input {
     width: 100%;
-    font-size: 9.5px;
+    font-size: 12px;
   }
   .url-box .text-button {
     grid-column: 1 / 2;
     width: 100%;
     padding: 0 6px;
-    font-size: 8px;
+    font-size: 11px;
   }
   .url-box .scan-button {
     grid-column: 2 / 3;
@@ -136,7 +277,8 @@
   .scan-status { padding: 13px; }
   .scan-status-row { align-items: flex-start; }
   .scan-state { align-items: flex-start; }
-  .scan-state small { white-space: normal; line-height: 1.35; }
+  .scan-state strong { font-size: 13px; }
+  .scan-state small { white-space: normal; line-height: 1.4; font-size: 12px; }
   .stop-button { flex: 0 0 auto; }
   .scan-metrics { gap: 8px 14px; line-height: 1.35; }
 
@@ -147,7 +289,7 @@
     align-items: start;
     gap: 12px;
   }
-  .results-heading h2 { font-size: 19px; }
+  .results-heading h2 { font-size: 23px; }
   .result-actions {
     display: grid;
     grid-template-columns: 1fr 1.15fr;
@@ -164,7 +306,7 @@
   .filter-icon-button { grid-column: 1 / -1; width: 100%; }
 
   .ai-strip {
-    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-columns: 36px minmax(0, 1fr);
     align-items: start;
     padding: 12px;
   }
@@ -179,27 +321,41 @@
     gap: 9px;
   }
   .image-card { border-radius: 13px; }
-  .card-body { padding: 9px; }
-  .card-title strong { font-size: 9px; }
-  .card-title small { font-size: 7.5px; }
-  .card-footer { gap: 5px; }
+  .card-body { padding: 10px; }
+  .card-title strong { font-size: 12px; }
+  .card-title small { font-size: 10px; }
+  .card-footer { gap: 6px; }
   .dimension-pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .preview-dialog,
-  .settings-dialog {
+  .settings-dialog,
+  .bulk-dialog {
     width: min(100%, 560px);
     max-height: calc(100vh - 20px);
   }
+
+  .bulk-dialog { padding: 20px; border-radius: 22px; }
+  .bulk-lead { margin-right: 34px; }
+  .bulk-actions { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 410px) {
   .brand-copy { display: none; }
-  .topbar h1 { font-size: 17px; }
+  .topbar h1 { font-size: 21px; }
   .scan-card { padding: 13px; }
   .gallery-grid { grid-template-columns: 1fr; }
   .result-actions { grid-template-columns: 1fr; }
   .filter-bar { grid-template-columns: 1fr; }
   .search-field,
   .filter-icon-button { grid-column: auto; }
-  .url-box { grid-template-columns: 28px minmax(0, 1fr); }
+  .url-box { grid-template-columns: 30px minmax(0, 1fr); }
+}
+
+@media (min-resolution: 1.5dppx) {
+  .card-title strong,
+  .scan-state strong,
+  .ai-strip strong,
+  .setting-row strong {
+    font-weight: 800;
+  }
 }
