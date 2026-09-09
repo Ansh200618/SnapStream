@@ -1,4 +1,4 @@
-import { downloadImageRobustly } from './robustDownload.js';
+import { downloadImageRobustly, downloadSelectedImagesAsZip } from './robustDownload.js';
 
 const WORKSPACE_STATE_KEY = 'snapstreamWorkspaceSnapshotV3';
 const SETTINGS_KEY = 'snapstreamVisibleMultiPageSettings';
@@ -24,7 +24,8 @@ const state = {
   lastDomain: '',
   images: new Map(),
   selected: new Set(),
-  visitedPages: new Set(),
+  visitedUrls: new Set(),
+  seenPageSignatures: new Set(),
   renderLimit: PAGE_SIZE,
   currentPreviewUrl: '',
 };
@@ -71,7 +72,7 @@ function showToast(title, detail = '', kind = 'info') {
     toast.appendChild(span);
   }
   stack.appendChild(toast);
-  setTimeout(() => toast.remove(), 5200);
+  setTimeout(() => toast.remove(), 5600);
 }
 
 function setScanStatus(title, detail, percent = null) {
@@ -103,6 +104,40 @@ function pageProgressPercent() {
   return Math.min(98, 8 + (state.pageIndex / Math.max(1, target)) * 88);
 }
 
+function getFilteredImages() {
+  const query = ($('filter-query')?.value || '').trim().toLowerCase();
+  const source = $('filter-source')?.value || 'all';
+  const size = $('filter-size')?.value || 'all';
+  const filtered = Array.from(state.images.values()).filter((item) => {
+    if (query) {
+      const haystack = `${item.url} ${item.alt || ''} ${(item.sources || []).join(' ')} ${item.pageUrl || ''}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    if (source !== 'all' && !(item.sources || [item.source]).includes(source)) return false;
+    if (size !== 'all') {
+      if (!item.width || !item.height) return false;
+      if (size === 'hd' && Math.max(item.width, item.height) < 1280) return false;
+      if (size === 'large' && Math.max(item.width, item.height) < 2000) return false;
+      if (size === 'square') {
+        const ratio = item.width / item.height;
+        if (ratio < 0.86 || ratio > 1.16) return false;
+      }
+    }
+    return true;
+  });
+
+  const area = (item) => (Number(item.width) || 0) * (Number(item.height) || 0);
+  const order = $('sort-order')?.value || 'website';
+  filtered.sort((a, b) => {
+    if (order === 'newest') return (b.discoveryIndex || 0) - (a.discoveryIndex || 0);
+    if (order === 'largest') return area(b) - area(a) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    if (order === 'smallest') return area(a) - area(b) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    if (order === 'source') return String(a.source).localeCompare(String(b.source)) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    return (a.orderIndex || a.discoveryIndex || 0) - (b.orderIndex || b.discoveryIndex || 0);
+  });
+  return filtered;
+}
+
 function updateMetrics() {
   const total = state.images.size;
   const visible = getFilteredImages().length;
@@ -116,7 +151,7 @@ function updateMetrics() {
   if ($('side-domain')) $('side-domain').textContent = state.lastDomain || 'No website scanned';
   if ($('total-target-count')) {
     $('total-target-count').textContent = state.expectedPages > 0
-      ? `${state.pageIndex.toLocaleString()}/${state.expectedPages.toLocaleString()} pages`
+      ? `${Math.min(state.pageIndex, state.expectedPages).toLocaleString()}/${state.expectedPages.toLocaleString()} pages`
       : `${state.pageIndex.toLocaleString()} visible pages`;
   }
   if ($('count-caption')) {
@@ -126,6 +161,8 @@ function updateMetrics() {
   }
   const download = $('download-selected');
   if (download) download.disabled = state.selected.size === 0;
+  const zip = $('download-zip');
+  if (zip) zip.disabled = state.selected.size === 0;
 }
 
 function snapshotImage(item) {
@@ -138,6 +175,7 @@ function snapshotImage(item) {
     height: Number(item.height) || 0,
     frameUrl: item.frameUrl || item.pageUrl || '',
     pageUrl: item.pageUrl || '',
+    pageNumber: Number(item.pageNumber) || 1,
     orderIndex: Number(item.orderIndex) || 0,
     discoveryIndex: Number(item.discoveryIndex) || 0,
   };
@@ -182,6 +220,7 @@ async function restoreSnapshot() {
     (snapshot.selected || []).forEach((url) => {
       if (state.images.has(url)) state.selected.add(url);
     });
+    if (state.targetUrl && $('target-url') && !$('target-url').value) $('target-url').value = state.targetUrl;
     renderGallery();
   } catch (_) {}
 }
@@ -189,7 +228,8 @@ async function restoreSnapshot() {
 function resetResults() {
   state.images.clear();
   state.selected.clear();
-  state.visitedPages.clear();
+  state.visitedUrls.clear();
+  state.seenPageSignatures.clear();
   state.pageIndex = 0;
   state.expectedPages = 0;
   state.elementsChecked = 0;
@@ -223,12 +263,23 @@ function injectUi() {
     panel.innerHTML = `
       <div>
         <strong>Visible multi-page crawl</strong>
-        <small>Opens the next page in the browser, scans it, then continues through pagination.</small>
+        <small>Follows links and click-only arrows like <b>1 &gt;</b>. Each page opens in the real browser tab, then SnapStream scans and merges results.</small>
       </div>
       <label class="visible-toggle"><input id="visible-crawl-enabled" type="checkbox" /> <span>Follow next pages</span></label>
       <label class="visible-page-limit"><span>Max pages</span><input id="visible-crawl-max" type="number" min="1" max="500" step="1" /></label>
     `;
     scanStatus.insertAdjacentElement('beforebegin', panel);
+  }
+
+  const actions = document.querySelector('.result-actions');
+  if (actions && !$('download-zip')) {
+    const zip = document.createElement('button');
+    zip.className = 'secondary-button';
+    zip.id = 'download-zip';
+    zip.type = 'button';
+    zip.disabled = true;
+    zip.textContent = 'Download ZIP';
+    actions.appendChild(zip);
   }
 
   const settingScanGroup = document.querySelector('.setting-group');
@@ -276,7 +327,7 @@ function injectStyles() {
   style.id = 'snapstream-visible-crawl-styles';
   style.textContent = `
     .visible-crawl-panel{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;margin:16px 0;padding:15px 16px;border:1px solid rgba(92,73,242,.18);border-radius:18px;background:linear-gradient(135deg,#f8f7ff,#eef4ff);box-shadow:0 18px 45px rgba(76,91,140,.08)}
-    .visible-crawl-panel strong{display:block;color:#111827;font-size:15px}.visible-crawl-panel small{display:block;color:#64748b;margin-top:4px;font-size:12.5px;line-height:1.4}.visible-toggle,.visible-page-limit{display:flex;align-items:center;gap:9px;color:#334155;font-size:12px;font-weight:800}.visible-toggle input{width:18px;height:18px;accent-color:#5c49f2}.visible-page-limit input{width:76px;border:1px solid #dbe3f0;border-radius:12px;padding:9px 10px;color:#111827;font-weight:800}.visible-settings-block{display:contents}.page-badge{position:absolute;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:rgba(15,23,42,.72);color:white;font-size:11px;font-weight:850;backdrop-filter:blur(8px)}
+    .visible-crawl-panel strong{display:block;color:#111827;font-size:15px}.visible-crawl-panel small{display:block;color:#64748b;margin-top:4px;font-size:12.5px;line-height:1.4}.visible-crawl-panel b{color:#5c49f2}.visible-toggle,.visible-page-limit{display:flex;align-items:center;gap:9px;color:#334155;font-size:12px;font-weight:800}.visible-toggle input{width:18px;height:18px;accent-color:#5c49f2}.visible-page-limit input{width:76px;border:1px solid #dbe3f0;border-radius:12px;padding:9px 10px;color:#111827;font-weight:800}.visible-settings-block{display:contents}.page-badge{position:absolute;left:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:rgba(15,23,42,.72);color:white;font-size:11px;font-weight:850;backdrop-filter:blur(8px)}
     @media (max-width:760px){.visible-crawl-panel{grid-template-columns:1fr}.visible-toggle,.visible-page-limit{justify-content:space-between}.visible-page-limit input{width:120px}}
   `;
   document.head.appendChild(style);
@@ -333,6 +384,47 @@ async function openOrNavigatePage(url, firstPage) {
   return waitForTabComplete(state.tabId);
 }
 
+async function clickNextControl(tabId, clickTarget) {
+  if (!clickTarget?.selector) return false;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: clickPaginationTarget,
+    args: [clickTarget],
+  });
+  return Boolean(result?.result?.clicked);
+}
+
+async function waitForPageChange(tabId, beforeSignature) {
+  await sleep(350);
+  const started = Date.now();
+  let sawLoading = false;
+
+  while (Date.now() - started < 18000) {
+    let tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch (_) {
+      return false;
+    }
+
+    if (tab.status === 'loading') sawLoading = true;
+    if (sawLoading && tab.status === 'complete') await sleep(450);
+
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: readVisiblePageSignature,
+      });
+      const current = result?.result;
+      if (current?.signature && current.signature !== beforeSignature) return true;
+    } catch (_) {}
+
+    await sleep(420);
+  }
+
+  return false;
+}
+
 async function startVisibleMultiPageScan() {
   if (state.running) return;
 
@@ -352,19 +444,27 @@ async function startVisibleMultiPageScan() {
   setScanStatus('Starting visible page crawl…', 'SnapStream will open pages in the browser and scan them one by one.', 4);
 
   let nextUrl = target;
+  let reuseCurrentTabAfterClick = false;
 
   try {
-    while (!state.cancelled && nextUrl && state.pageIndex < state.settings.maxPages) {
-      const normalized = stripHash(nextUrl);
-      if (state.visitedPages.has(normalized)) break;
-      state.visitedPages.add(normalized);
-
+    while (!state.cancelled && state.pageIndex < state.settings.maxPages) {
       const pageNumber = state.pageIndex + 1;
-      setScanStatus(`Opening page ${pageNumber}…`, nextUrl, pageProgressPercent());
-      const tab = await openOrNavigatePage(nextUrl, pageNumber === 1);
+      let tab;
+
+      if (reuseCurrentTabAfterClick) {
+        tab = await waitForTabComplete(state.tabId);
+        reuseCurrentTabAfterClick = false;
+      } else {
+        const normalized = stripHash(nextUrl);
+        if (state.visitedUrls.has(normalized) && state.pageIndex > 0) break;
+        state.visitedUrls.add(normalized);
+        setScanStatus(`Opening page ${pageNumber}…`, nextUrl, pageProgressPercent());
+        tab = await openOrNavigatePage(nextUrl, pageNumber === 1);
+      }
+
       state.lastDomain = new URL(tab.url).hostname;
       await chrome.runtime.sendMessage({ origin: new URL(tab.url).origin }).catch(() => {});
-      await sleep(750);
+      await sleep(650);
 
       setScanStatus(`Scanning visible page ${pageNumber}…`, state.lastDomain, pageProgressPercent());
       const results = await chrome.scripting.executeScript({
@@ -386,15 +486,40 @@ async function startVisibleMultiPageScan() {
         mergePageResult(value, pageNumber);
       }
 
+      const pageSignature = topResult?.signature || `${tab.url}|${pageNumber}`;
+      if (state.seenPageSignatures.has(pageSignature) && pageNumber > 1) break;
+      state.seenPageSignatures.add(pageSignature);
+
       state.pageIndex = pageNumber;
       if (topResult?.counter?.total) state.expectedPages = Math.max(state.expectedPages, Number(topResult.counter.total) || 0);
       updateMetrics();
       renderGallery();
       await persistSnapshot();
 
-      const foundNext = topResult?.nextUrl ? stripHash(topResult.nextUrl) : '';
-      if (!foundNext || state.visitedPages.has(foundNext)) break;
-      nextUrl = foundNext;
+      const nextTarget = topResult?.nextTarget || null;
+      const foundNextUrl = nextTarget?.url ? stripHash(nextTarget.url) : '';
+
+      if (foundNextUrl && !state.visitedUrls.has(foundNextUrl)) {
+        setScanStatus(`Next page found after page ${pageNumber}`, nextTarget.label || nextTarget.url, pageProgressPercent());
+        nextUrl = nextTarget.url;
+        continue;
+      }
+
+      if (nextTarget?.selector) {
+        setScanStatus(`Clicking next control after page ${pageNumber}…`, nextTarget.label || 'Pagination arrow/button', pageProgressPercent());
+        const before = topResult?.signature;
+        const clicked = await clickNextControl(state.tabId, nextTarget);
+        if (!clicked) break;
+        const changed = await waitForPageChange(state.tabId, before);
+        if (!changed) {
+          showToast('Next page did not change', 'SnapStream clicked the pagination control, but the page content did not change.', 'error');
+          break;
+        }
+        reuseCurrentTabAfterClick = true;
+        continue;
+      }
+
+      break;
     }
 
     finishVisibleScan(true, state.cancelled ? 'Visible crawl stopped. Results found so far are ready.' : 'Visible multi-page crawl complete.');
@@ -439,7 +564,8 @@ function mergePageResult(result, pageNumber) {
   images.forEach((item, index) => {
     if (!item?.url) return;
     const existing = state.images.get(item.url);
-    const orderIndex = (pageNumber * 100000) + (Number(item.orderIndex) || index + 1);
+    const localOrder = Number(item.orderIndex) || index + 1;
+    const orderIndex = (pageNumber * 100000) + localOrder;
     if (existing) {
       existing.width = Math.max(existing.width || 0, Number(item.width) || 0);
       existing.height = Math.max(existing.height || 0, Number(item.height) || 0);
@@ -462,44 +588,6 @@ function mergePageResult(result, pageNumber) {
       orderIndex,
     });
   });
-}
-
-function activeSortOrder() {
-  return $('sort-order')?.value || 'website';
-}
-
-function getFilteredImages() {
-  const query = ($('filter-query')?.value || '').trim().toLowerCase();
-  const source = $('filter-source')?.value || 'all';
-  const size = $('filter-size')?.value || 'all';
-  const filtered = Array.from(state.images.values()).filter((item) => {
-    if (query) {
-      const haystack = `${item.url} ${item.alt || ''} ${(item.sources || []).join(' ')} ${item.pageUrl || ''}`.toLowerCase();
-      if (!haystack.includes(query)) return false;
-    }
-    if (source !== 'all' && !(item.sources || [item.source]).includes(source)) return false;
-    if (size !== 'all') {
-      if (!item.width || !item.height) return false;
-      if (size === 'hd' && Math.max(item.width, item.height) < 1280) return false;
-      if (size === 'large' && Math.max(item.width, item.height) < 2000) return false;
-      if (size === 'square') {
-        const ratio = item.width / item.height;
-        if (ratio < 0.86 || ratio > 1.16) return false;
-      }
-    }
-    return true;
-  });
-
-  const area = (item) => (Number(item.width) || 0) * (Number(item.height) || 0);
-  const order = activeSortOrder();
-  filtered.sort((a, b) => {
-    if (order === 'newest') return (b.discoveryIndex || 0) - (a.discoveryIndex || 0);
-    if (order === 'largest') return area(b) - area(a) || (a.orderIndex || 0) - (b.orderIndex || 0);
-    if (order === 'smallest') return area(a) - area(b) || (a.orderIndex || 0) - (b.orderIndex || 0);
-    if (order === 'source') return String(a.source).localeCompare(String(b.source)) || (a.orderIndex || 0) - (b.orderIndex || 0);
-    return (a.orderIndex || a.discoveryIndex || 0) - (b.orderIndex || b.discoveryIndex || 0);
-  });
-  return filtered;
 }
 
 function displayName(item) {
@@ -526,7 +614,7 @@ function renderGallery() {
   grid.classList.toggle('hidden', state.images.size === 0);
   const loadMore = $('load-more');
   if (loadMore) {
-    loadMore.classList.toggle('hidden', visible.length >= filtered.length);
+    loadMore.classList.toggle('hidden', state.images.size === 0 || visible.length >= filtered.length);
     loadMore.textContent = `Show more · ${(filtered.length - visible.length).toLocaleString()} remaining`;
   }
   const fragment = document.createDocumentFragment();
@@ -692,6 +780,12 @@ async function downloadSelected() {
   showToast('Bulk download finished', `${successful} downloaded${failed ? ` · ${failed} failed` : ''}.`, failed ? 'error' : 'info');
 }
 
+async function downloadZip() {
+  if (!state.selected.size) return;
+  await persistSnapshot();
+  await downloadSelectedImagesAsZip();
+}
+
 function openPreview(url) {
   const item = state.images.get(url);
   if (!item) return;
@@ -742,6 +836,13 @@ function wireEvents() {
     downloadSelected();
   }, true);
 
+  $('download-zip')?.addEventListener('click', (event) => {
+    if (!ownsResults()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    downloadZip();
+  }, true);
+
   $('load-more')?.addEventListener('click', (event) => {
     if (!ownsResults()) return;
     event.preventDefault();
@@ -784,6 +885,65 @@ function wireEvents() {
     const item = state.images.get(state.currentPreviewUrl);
     if (item) downloadOne(item);
   }, true);
+}
+
+function readVisiblePageSignature() {
+  function readCounter() {
+    const text = `${document.querySelector('[class*="count"],[class*="counter"],[class*="page"],[id*="count"],[id*="counter"],[id*="page"]')?.textContent || ''} ${(document.body?.innerText || document.body?.textContent || '').slice(0, 80000)}`;
+    const match = text.replace(/\s+/g, ' ').match(/\b(\d{1,5})\s*(?:\/|of)\s*(\d{1,5})\b/i);
+    if (!match) return '';
+    return `${match[1]}/${match[2]}`;
+  }
+
+  const imageSample = Array.from(document.images || [])
+    .slice(0, 12)
+    .map((img) => img.currentSrc || img.src || img.getAttribute('data-src') || '')
+    .filter(Boolean)
+    .join('|');
+  const bodySample = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').slice(0, 500);
+  return {
+    href: location.href,
+    signature: `${location.href}::${document.title || ''}::${readCounter()}::${imageSample}::${bodySample}`,
+  };
+}
+
+function clickPaginationTarget(target) {
+  function bySelector(selector) {
+    try { return selector ? document.querySelector(selector) : null; } catch (_) { return null; }
+  }
+
+  function elementAtPoint(rect) {
+    if (!rect) return null;
+    const x = Math.max(1, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
+    const y = Math.max(1, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
+    return document.elementFromPoint(x, y);
+  }
+
+  const element = bySelector(target.selector) || elementAtPoint(target.rect);
+  if (!element) return { clicked: false, reason: 'next control not found' };
+
+  const clickable = element.closest?.('a,button,[role="button"],[onclick],[tabindex]') || element;
+  try { clickable.scrollIntoView({ block: 'center', inline: 'center' }); } catch (_) {}
+
+  const rect = clickable.getBoundingClientRect?.();
+  const options = rect ? {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: rect.left + rect.width / 2,
+    clientY: rect.top + rect.height / 2,
+  } : { bubbles: true, cancelable: true, view: window };
+
+  try {
+    clickable.dispatchEvent(new MouseEvent('mouseover', options));
+    clickable.dispatchEvent(new MouseEvent('mousedown', options));
+    clickable.dispatchEvent(new MouseEvent('mouseup', options));
+    clickable.dispatchEvent(new MouseEvent('click', options));
+    if (typeof clickable.click === 'function') clickable.click();
+    return { clicked: true };
+  } catch (error) {
+    return { clicked: false, reason: error?.message || String(error) };
+  }
 }
 
 function scanVisiblePage(options = {}) {
@@ -830,7 +990,7 @@ function scanVisiblePage(options = {}) {
 
   function junkUrl(url) {
     if (!url || url.startsWith('data:image/')) return false;
-    return /(?:^|[\/_\-.])(logo|sprite|icon|favicon|badge|button|btn|arrow|loader|loading|spinner|spacer|pixel|blank|transparent|social|advert|advertise|advertisement|banner|ads?|tracking)(?:[\/_\-.]|$)/i.test(url);
+    return /(?:^|[\/_\-.])(logo|sprite|icon|favicon|badge|button|btn|loader|loading|spinner|spacer|pixel|blank|transparent|social|advert|advertise|advertisement|banner|ads?|tracking)(?:[\/_\-.]|$)/i.test(url);
   }
 
   function junkDimensions(width, height) {
@@ -891,6 +1051,7 @@ function scanVisiblePage(options = {}) {
           const style = getComputedStyle(element);
           cssUrls(style.backgroundImage).forEach((url) => add(url, 'background', element));
           cssUrls(style.borderImageSource).forEach((url) => add(url, 'background', element));
+          cssUrls(style.maskImage).forEach((url) => add(url, 'background', element));
         } catch (_) {}
       }
     }
@@ -926,49 +1087,167 @@ function scanVisiblePage(options = {}) {
     }
   }
 
-  function scoreNextAnchor(anchor, counter) {
-    const href = absoluteUrl(anchor.getAttribute('href'), currentPageUrl);
-    if (!href || href === currentPageUrl) return null;
-    let score = 0;
-    const text = `${anchor.textContent || ''} ${anchor.getAttribute('aria-label') || ''} ${anchor.getAttribute('title') || ''} ${anchor.getAttribute('rel') || ''} ${anchor.className || ''} ${anchor.id || ''}`.toLowerCase();
-    if (/\bnext\b|nextpage|next-page|pager-next|pagination-next|\bolder\b|more/i.test(text)) score += 45;
-    if (/[›»→]/.test(text.trim())) score += 30;
-    if (/\bprev\b|previous|back|newer|[‹«←]/i.test(text)) score -= 80;
-    if (/disabled|inactive|current/i.test(text)) score -= 40;
-    if (/page|pager|pagination|gallery|slide|photo/i.test(text)) score += 10;
-    const numberText = (anchor.textContent || '').trim().match(/^\d{1,5}$/);
-    if (counter && numberText && Number(numberText[0]) === counter.current + 1) score += 55;
-    const currentSeries = numericSeries(currentPageUrl);
-    const hrefSeries = numericSeries(href);
-    if (currentSeries && hrefSeries && currentSeries.origin === hrefSeries.origin && currentSeries.prefix === hrefSeries.prefix && currentSeries.suffix.toLowerCase() === hrefSeries.suffix.toLowerCase()) {
-      const distance = Math.abs(hrefSeries.number - currentSeries.number);
-      if (distance === 1) score += 22;
-      else if (distance <= 5) score += 10;
+  function makeSelector(element) {
+    if (!element || !element.tagName) return '';
+    if (element.id) return `#${CSS.escape(element.id)}`;
+    const parts = [];
+    let node = element;
+    while (node && node.nodeType === Node.ELEMENT_NODE && parts.length < 6) {
+      let part = node.tagName.toLowerCase();
+      if (node.classList?.length) {
+        part += Array.from(node.classList).slice(0, 2).map((cls) => `.${CSS.escape(cls)}`).join('');
+      }
+      const parent = node.parentElement;
+      if (parent) {
+        const same = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
+        if (same.length > 1) part += `:nth-of-type(${same.indexOf(node) + 1})`;
+      }
+      parts.unshift(part);
+      node = parent;
     }
-    try {
-      if (new URL(href).hostname !== location.hostname) score -= 70;
-    } catch (_) {}
-    return score > 0 ? { href, score } : null;
+    return parts.join(' > ');
   }
 
-  function detectNextUrl(counter) {
+  function candidateText(element) {
+    const attrs = [
+      element.textContent || '',
+      element.getAttribute?.('aria-label') || '',
+      element.getAttribute?.('title') || '',
+      element.getAttribute?.('rel') || '',
+      element.getAttribute?.('data-testid') || '',
+      element.getAttribute?.('data-role') || '',
+      element.getAttribute?.('data-action') || '',
+      element.className || '',
+      element.id || '',
+      element.parentElement?.className || '',
+    ];
+    return attrs.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function isDisabled(element, text) {
+    return Boolean(
+      element.disabled ||
+      element.getAttribute?.('aria-disabled') === 'true' ||
+      element.getAttribute?.('disabled') !== null ||
+      /\b(disabled|inactive|current|selected|active)\b/i.test(text)
+    );
+  }
+
+  function scoreNextCandidate(element, counter) {
+    const clickable = element.closest?.('a,button,[role="button"],[onclick],[tabindex]') || element;
+    const textRaw = candidateText(clickable);
+    const text = textRaw.toLowerCase();
+    const visibleText = (clickable.textContent || '').replace(/\s+/g, '').trim();
+    if (!textRaw || isDisabled(clickable, text)) return null;
+
+    const rect = clickable.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+
+    let score = 0;
+    if (/\bnext\b|nextpage|next-page|pager-next|pagination-next|\bolder\b|more/i.test(textRaw)) score += 70;
+    if (/chevron[-_\s]*right|angle[-_\s]*right|arrow[-_\s]*right|right[-_\s]*(arrow|chevron)|fa-angle-right|fa-chevron-right|icon-next/i.test(textRaw)) score += 55;
+    if (/^(>|›|»|→|next)$/i.test(visibleText)) score += 80;
+    if (/[›»→]/.test(visibleText) || visibleText === '>') score += 65;
+    if (/pagination|pager|page-numbers|pages|gallery|slide|photo/i.test(textRaw)) score += 16;
+
+    const numberText = visibleText.match(/^\d{1,5}$/);
+    if (counter && numberText && Number(numberText[0]) === counter.current + 1) score += 90;
+
+    if (/\bprev\b|previous|back|newer|chevron[-_\s]*left|angle[-_\s]*left|arrow[-_\s]*left|left[-_\s]*(arrow|chevron)|[‹«←]/i.test(textRaw)) score -= 120;
+
+    let href = '';
+    if (clickable.tagName?.toLowerCase() === 'a') href = absoluteUrl(clickable.getAttribute('href'), currentPageUrl) || '';
+    if (!href) {
+      href = absoluteUrl(clickable.getAttribute?.('data-href') || clickable.getAttribute?.('data-url') || clickable.getAttribute?.('data-next'), currentPageUrl) || '';
+    }
+
+    if (href) {
+      try {
+        const parsed = new URL(href);
+        if (parsed.hostname !== location.hostname) score -= 85;
+      } catch (_) {}
+      const currentSeries = numericSeries(currentPageUrl);
+      const hrefSeries = numericSeries(href);
+      if (currentSeries && hrefSeries && currentSeries.origin === hrefSeries.origin && currentSeries.prefix === hrefSeries.prefix && currentSeries.suffix.toLowerCase() === hrefSeries.suffix.toLowerCase()) {
+        const distance = Math.abs(hrefSeries.number - currentSeries.number);
+        if (distance === 1) score += 40;
+        else if (distance <= 5) score += 18;
+      }
+    } else {
+      score += 12;
+    }
+
+    if (score <= 20) return null;
+    return {
+      element: clickable,
+      url: href && stripSamePageHash(href) !== stripSamePageHash(currentPageUrl) ? href : '',
+      selector: makeSelector(clickable),
+      score,
+      label: (clickable.textContent || clickable.getAttribute?.('aria-label') || clickable.getAttribute?.('title') || 'Next page').replace(/\s+/g, ' ').trim().slice(0, 80),
+      rect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+    };
+  }
+
+  function stripSamePageHash(value) {
+    try {
+      const url = new URL(value, currentPageUrl);
+      url.hash = '';
+      return url.href;
+    } catch (_) {
+      return value || '';
+    }
+  }
+
+  function detectNextTarget(counter) {
     const relNext = document.querySelector('link[rel~="next"], a[rel~="next"]');
     const relUrl = absoluteUrl(relNext?.getAttribute('href'), currentPageUrl);
-    if (relUrl) return relUrl;
+    if (relUrl) return { url: relUrl, selector: '', label: 'rel=next link', score: 200 };
 
-    const candidates = Array.from(document.querySelectorAll('a[href]'))
-      .map((anchor) => scoreNextAnchor(anchor, counter))
+    const clickableSelectors = [
+      'a[href]',
+      'button',
+      '[role="button"]',
+      '[onclick]',
+      '[tabindex]',
+      '[class*="next" i]',
+      '[id*="next" i]',
+      '[class*="right" i]',
+      '[class*="chevron" i]',
+      '[class*="arrow" i]',
+      '[class*="pager" i] a',
+      '[class*="pagination" i] a',
+      '[class*="page" i] a',
+      '[class*="pager" i] button',
+      '[class*="pagination" i] button',
+      '[class*="page" i] button',
+    ].join(',');
+
+    const candidates = Array.from(new Set(Array.from(document.querySelectorAll(clickableSelectors))))
+      .map((element) => scoreNextCandidate(element, counter))
       .filter(Boolean)
       .sort((a, b) => b.score - a.score);
-    if (candidates.length) return candidates[0].href;
 
-    for (const element of document.querySelectorAll('button,[role="button"],[onclick]')) {
+    if (candidates.length) {
+      const best = candidates[0];
+      return {
+        url: best.url || '',
+        selector: best.selector,
+        label: best.label || 'Next page control',
+        score: best.score,
+        rect: best.rect,
+      };
+    }
+
+    for (const element of document.querySelectorAll('button,[role="button"],[onclick],a[href="#"],a[href="javascript:void(0)"]')) {
       const raw = `${element.getAttribute('onclick') || ''} ${element.getAttribute('data-href') || ''} ${element.getAttribute('data-url') || ''}`;
       const match = raw.match(/(?:location\.href|window\.location|href)\s*=\s*['\"]([^'\"]+)['\"]/i) || raw.match(/['\"](https?:\/\/[^'\"]+|[^'\"]+\.html?)['\"]/i);
       const url = absoluteUrl(match?.[1], currentPageUrl);
-      const text = `${element.textContent || ''} ${element.getAttribute('aria-label') || ''} ${element.className || ''}`.toLowerCase();
-      if (url && /next|older|more|›|»|→/i.test(text) && !/prev|previous|back|newer/i.test(text)) return url;
+      const text = candidateText(element);
+      if (url && /next|older|more|>|›|»|→|right/i.test(text) && !/prev|previous|back|newer|left/i.test(text)) {
+        return { url, selector: makeSelector(element), label: text.slice(0, 80), score: 80 };
+      }
     }
+
     return null;
   }
 
@@ -997,9 +1276,10 @@ function scanVisiblePage(options = {}) {
     }
     inspectDocument(true);
     const counter = isTopFrame ? readCounter() : null;
-    const nextUrl = isTopFrame ? detectNextUrl(counter) : null;
+    const nextTarget = isTopFrame ? detectNextTarget(counter) : null;
+    const signature = readVisiblePageSignature().signature;
     window.scrollTo(originalX, originalY);
-    return { isTopFrame, pageUrl: currentPageUrl, title: document.title || '', counter, nextUrl, images, elementsChecked };
+    return { isTopFrame, pageUrl: currentPageUrl, title: document.title || '', counter, nextTarget, images, elementsChecked, signature };
   })();
 }
 
