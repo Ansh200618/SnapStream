@@ -1,0 +1,125 @@
+name: Build Extension Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'manifest.json'
+      - 'src/**'
+      - 'views/**'
+      - 'stylesheets/**'
+      - 'images/**'
+      - 'lib/**'
+      - '.github/workflows/build-extension-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate and package extension
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import zipfile
+
+          root = pathlib.Path.cwd()
+          manifest_path = root / 'manifest.json'
+          if not manifest_path.exists():
+              raise SystemExit('manifest.json is missing')
+
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          version = manifest.get('version')
+          if not version:
+              raise SystemExit('manifest.json does not contain a version')
+          if manifest.get('manifest_version') != 3:
+              raise SystemExit('SnapStream must remain a Manifest V3 extension')
+
+          required_files = [
+              'manifest.json',
+              'views/dashboard.html',
+              'views/launcher.html',
+              'src/dashboard.js',
+              'src/launcher.js',
+              'src/deepScan.js',
+              'src/robustDownload.js',
+              'stylesheets/dashboard.css',
+              'stylesheets/dashboard-refine.css',
+          ]
+          for rel in required_files:
+              if not (root / rel).exists():
+                  raise SystemExit(f'Required extension file missing: {rel}')
+
+          dist = root / 'dist'
+          dist.mkdir(exist_ok=True)
+          latest_zip = dist / 'SnapStreamExtension.zip'
+          versioned_zip = dist / f'SnapStreamExtension-v{version}.zip'
+
+          include_roots = ['manifest.json', 'src', 'views', 'stylesheets', 'images', 'lib']
+          skip_names = {'.DS_Store', 'Thumbs.db'}
+
+          def should_include(path: pathlib.Path) -> bool:
+              if path.name in skip_names:
+                  return False
+              if '__MACOSX' in path.parts:
+                  return False
+              if any(part.startswith('.') for part in path.parts):
+                  return False
+              return path.is_file()
+
+          def write_zip(target: pathlib.Path):
+              with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+                  for entry in include_roots:
+                      path = root / entry
+                      if not path.exists():
+                          continue
+                      if path.is_file():
+                          zf.write(path, path.relative_to(root).as_posix())
+                      else:
+                          for file in sorted(path.rglob('*')):
+                              rel = file.relative_to(root)
+                              if should_include(rel):
+                                  zf.write(file, rel.as_posix())
+
+          write_zip(latest_zip)
+          write_zip(versioned_zip)
+
+          digest = hashlib.sha256(latest_zip.read_bytes()).hexdigest()
+          (dist / 'SnapStreamExtension.sha256').write_text(f'{digest}  SnapStreamExtension.zip\n', encoding='ascii')
+          (dist / 'SnapStreamExtension-version.txt').write_text(f'{version}\n', encoding='ascii')
+
+          size_mb = latest_zip.stat().st_size / (1024 * 1024)
+          print(f'Packaged SnapStream extension v{version}: {size_mb:.2f} MB')
+          print(f'SHA256: {digest}')
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapStream-Extension-Package
+          path: |
+            dist/SnapStreamExtension.zip
+            dist/SnapStreamExtension.sha256
+            dist/SnapStreamExtension-version.txt
+            dist/SnapStreamExtension-v*.zip
+          if-no-files-found: error
+
+      - name: Publish latest extension package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(cat dist/SnapStreamExtension-version.txt)"
+          if ! gh release view extension-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create extension-latest --repo "$GITHUB_REPOSITORY" --title 'SnapStream Extension Package' --notes 'Latest packaged SnapStream browser extension.'
+          fi
+          gh release edit extension-latest --repo "$GITHUB_REPOSITORY" --title 'SnapStream Extension Package' --notes "Latest packaged SnapStream browser extension from main. Current version: v${VERSION}. Use this ZIP for manual Load unpacked setup, or use SnapStream Windows Manager to pull the newest GitHub build automatically."
+          gh release upload extension-latest dist/SnapStreamExtension.zip dist/SnapStreamExtension.sha256 dist/SnapStreamExtension-version.txt dist/SnapStreamExtension-v*.zip --clobber --repo "$GITHUB_REPOSITORY"
