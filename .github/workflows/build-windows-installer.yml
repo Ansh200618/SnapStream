@@ -1,0 +1,60 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'installer/windows/**'
+      - 'images/icon_128.png'
+      - '.github/workflows/build-windows-installer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj
+
+      - name: Publish single-file EXE
+        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/windows
+
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $source = Get-ChildItem dist/windows -Filter 'SnapStreamSetup.exe' | Select-Object -First 1
+          if (-not $source) { throw 'SnapStreamSetup.exe was not produced.' }
+          Copy-Item $source.FullName 'dist/SnapStreamSetup.exe' -Force
+          $hash = (Get-FileHash 'dist/SnapStreamSetup.exe' -Algorithm SHA256).Hash.ToLower()
+          "$hash  SnapStreamSetup.exe" | Set-Content 'dist/SnapStreamSetup.sha256' -Encoding ascii
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapStream-Windows-Installer
+          path: |
+            dist/SnapStreamSetup.exe
+            dist/SnapStreamSetup.sha256
+          if-no-files-found: error
+
+      - name: Publish stable installer download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view installer-latest --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Latest development installer for SnapStream. The EXE is built from this public repository by GitHub Actions.'
+          }
+          gh release upload installer-latest dist/SnapStreamSetup.exe dist/SnapStreamSetup.sha256 --clobber --repo $env:GITHUB_REPOSITORY
