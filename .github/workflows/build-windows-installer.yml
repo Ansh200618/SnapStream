@@ -27,17 +27,38 @@ jobs:
       - name: Restore
         run: dotnet restore installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj
 
-      - name: Publish single-file EXE
-        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/windows
+      - name: Publish lite EXE
+        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=None -p:DebugSymbols=false -o dist/windows-lite
 
-      - name: Rename installer
+      - name: Publish compressed full EXE
+        run: dotnet publish installer/windows/SnapStreamInstaller/SnapStreamInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/windows-full
+
+      - name: Prepare release files
         shell: pwsh
         run: |
-          $source = Get-ChildItem dist/windows -Filter 'SnapStreamSetup.exe' | Select-Object -First 1
-          if (-not $source) { throw 'SnapStreamSetup.exe was not produced.' }
-          Copy-Item $source.FullName 'dist/SnapStreamSetup.exe' -Force
-          $hash = (Get-FileHash 'dist/SnapStreamSetup.exe' -Algorithm SHA256).Hash.ToLower()
-          "$hash  SnapStreamSetup.exe" | Set-Content 'dist/SnapStreamSetup.sha256' -Encoding ascii
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          $lite = Get-ChildItem dist/windows-lite -Filter 'SnapStream.exe' | Select-Object -First 1
+          if (-not $lite) { $lite = Get-ChildItem dist/windows-lite -Filter 'SnapStreamSetup.exe' | Select-Object -First 1 }
+          if (-not $lite) { throw 'Lite EXE was not produced.' }
+          Copy-Item $lite.FullName 'dist/SnapStreamSetup-Lite.exe' -Force
+
+          $full = Get-ChildItem dist/windows-full -Filter 'SnapStream.exe' | Select-Object -First 1
+          if (-not $full) { $full = Get-ChildItem dist/windows-full -Filter 'SnapStreamSetup.exe' | Select-Object -First 1 }
+          if (-not $full) { throw 'Full EXE was not produced.' }
+          Copy-Item $full.FullName 'dist/SnapStreamSetup-Full.exe' -Force
+
+          Copy-Item 'dist/SnapStreamSetup-Lite.exe' 'dist/SnapStreamSetup.exe' -Force
+
+          $liteHash = (Get-FileHash 'dist/SnapStreamSetup-Lite.exe' -Algorithm SHA256).Hash.ToLower()
+          $fullHash = (Get-FileHash 'dist/SnapStreamSetup-Full.exe' -Algorithm SHA256).Hash.ToLower()
+          $defaultHash = (Get-FileHash 'dist/SnapStreamSetup.exe' -Algorithm SHA256).Hash.ToLower()
+
+          "$liteHash  SnapStreamSetup-Lite.exe" | Set-Content 'dist/SnapStreamSetup-Lite.sha256' -Encoding ascii
+          "$fullHash  SnapStreamSetup-Full.exe" | Set-Content 'dist/SnapStreamSetup-Full.sha256' -Encoding ascii
+          "$defaultHash  SnapStreamSetup.exe" | Set-Content 'dist/SnapStreamSetup.sha256' -Encoding ascii
+
+          Get-ChildItem dist -Filter 'SnapStreamSetup*.exe' | Select-Object Name,Length
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -46,6 +67,10 @@ jobs:
           path: |
             dist/SnapStreamSetup.exe
             dist/SnapStreamSetup.sha256
+            dist/SnapStreamSetup-Lite.exe
+            dist/SnapStreamSetup-Lite.sha256
+            dist/SnapStreamSetup-Full.exe
+            dist/SnapStreamSetup-Full.sha256
           if-no-files-found: error
 
       - name: Publish stable installer download
@@ -55,6 +80,13 @@ jobs:
         run: |
           gh release view installer-latest --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Latest development installer for SnapStream. The EXE is built from this public repository by GitHub Actions.'
+            gh release create installer-latest --repo $env:GITHUB_REPOSITORY --title 'SnapStream Windows Installer' --notes 'Latest development installer for SnapStream. Lite is the small download and Full is the self-contained fallback. Built from this public repository by GitHub Actions.'
           }
-          gh release upload installer-latest dist/SnapStreamSetup.exe dist/SnapStreamSetup.sha256 --clobber --repo $env:GITHUB_REPOSITORY
+          gh release upload installer-latest `
+            dist/SnapStreamSetup.exe `
+            dist/SnapStreamSetup.sha256 `
+            dist/SnapStreamSetup-Lite.exe `
+            dist/SnapStreamSetup-Lite.sha256 `
+            dist/SnapStreamSetup-Full.exe `
+            dist/SnapStreamSetup-Full.sha256 `
+            --clobber --repo $env:GITHUB_REPOSITORY
