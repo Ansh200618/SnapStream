@@ -1,5 +1,5 @@
 #define MyAppName "SnapStream"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.1.0"
 #define MyAppPublisher "SnapStream"
 #define MyAppExeName "SnapStream.exe"
 
@@ -26,7 +26,7 @@ CloseApplications=yes
 RestartApplications=no
 
 [Files]
-Source: "..\..\..\..\dist\windows\SnapStream.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\..\..\dist\windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\SnapStream"; Filename: "{app}\SnapStream.exe"; WorkingDir: "{app}"
