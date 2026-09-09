@@ -1,7 +1,7 @@
 {
   "name": "SnapStream - Image Downloader",
-  "description": "Deep-scan websites, follow visible pagination arrows and next pages, preserve website order, create ZIP packages, and download protected-site images more reliably.",
-  "version": "5.0.8",
+  "description": "Deep-scan websites, preserve website order, create ZIP packages, and download protected-site images more reliably.",
+  "version": "5.0.9",
   "minimum_chrome_version": "116",
   "manifest_version": 3,
   "permissions": [
