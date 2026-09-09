@@ -287,7 +287,15 @@
           image = page.image;
         }
 
-        if (image) add(image.url, 'gallery', null, { alt: image.alt, width: image.width, height: image.height, pageUrl });
+        if (image) {
+          add(image.url, 'gallery', null, {
+            alt: image.alt,
+            width: image.width,
+            height: image.height,
+            pageUrl,
+            orderIndex: counter?.current || completed + 1,
+          });
+        }
         extractSeriesLinks(doc, pageUrl, series).forEach(enqueue);
 
         if (counter && counter.total === targetTotal && !direction) {
@@ -350,6 +358,7 @@
     let stableRounds = 0;
     let previousHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
     let previousCount = 0;
+    let orderSequence = 0;
 
     const add = (raw, source, element, extra = {}) => {
       const url = absoluteUrl(raw, extra.pageUrl || document.baseURI);
@@ -358,6 +367,8 @@
       const height = Number(extra.height || (element && (element.naturalHeight || element.videoHeight)) || 0);
       if (source !== 'gallery' && (isLikelyJunkUrl(url) || isObviouslyJunkDimensions(width, height))) return;
       seenUrls.add(url);
+      orderSequence += 1;
+      const explicitOrder = Number(extra.orderIndex || extra.sequence || 0);
       queued.set(url, {
         url,
         source,
@@ -366,12 +377,13 @@
         alt: extra.alt || (element && element.getAttribute && (element.getAttribute('alt') || element.getAttribute('title'))) || '',
         width,
         height,
+        orderIndex: explicitOrder > 0 ? explicitOrder : orderSequence,
       });
     };
 
     const flush = (phase) => {
       if (queued.size) {
-        const images = Array.from(queued.values());
+        const images = Array.from(queued.values()).sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
         queued.clear();
         safeSend({ type: 'SNAPSTREAM_SCAN_BATCH', scanId, images, pass, elementsChecked, phase, frameUrl: location.href });
       }
@@ -528,8 +540,6 @@
 
     safeSend({ type: 'SNAPSTREAM_SCAN_STATUS', scanId, pass, found: seenUrls.size, elementsChecked, phase: 'scrolling', frameUrl: location.href, isTopFrame: true });
 
-    // Deliberately no fixed pass/time limit. Completion is based only on reaching the real
-    // bottom and observing no document growth and no new images for several verification rounds.
     while (!cancelledScans.has(scanId)) {
       pass += 1;
       const viewport = Math.max(window.innerHeight || 0, 600);
@@ -550,7 +560,6 @@
 
       if (atBottom && noGrowth && noNewImages) {
         stableRounds += 1;
-        // Re-trigger common lazy loaders before declaring completion.
         window.dispatchEvent(new Event('scroll'));
         window.dispatchEvent(new Event('resize'));
         await sleep(Math.min(900, config.delay + 220));
