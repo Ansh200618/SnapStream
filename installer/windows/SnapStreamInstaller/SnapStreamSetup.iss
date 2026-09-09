@@ -13,7 +13,7 @@ DefaultGroupName=SnapStream
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputDir=..\..\..\..\dist
+OutputDir=..\..\..\dist
 OutputBaseFilename=SnapStreamSetup
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -26,7 +26,7 @@ CloseApplications=yes
 RestartApplications=no
 
 [Files]
-Source: "..\..\..\..\dist\windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\..\dist\windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\SnapStream"; Filename: "{app}\SnapStream.exe"; WorkingDir: "{app}"
@@ -41,9 +41,3 @@ Filename: "{app}\SnapStream.exe"; Description: "Launch SnapStream"; Flags: nowai
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\SnapStream\Extension.staging-*"
 Type: filesandordirs; Name: "{localappdata}\SnapStream\Extension.backup-*"
-
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-end;
