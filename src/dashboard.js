@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = {
 };
 
 const PAGE_SIZE = 120;
+const BULK_DOWNLOAD_WARNING_THRESHOLD = 10;
+const WORKSPACE_STATE_KEY = 'snapstreamWorkspaceSnapshotV2';
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -32,6 +34,7 @@ const state = {
   initialTabId: null,
   initialUrl: '',
   lastDomain: '',
+  bulkResolver: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -68,6 +71,14 @@ const els = {
   previewMeta: $('preview-meta'),
   previewUrl: $('preview-url'),
   previewDownload: $('preview-download'),
+  bulkDownloadModal: $('bulk-download-modal'),
+  bulkClose: $('bulk-close'),
+  bulkCancel: $('bulk-cancel'),
+  bulkCount: $('bulk-count'),
+  bulkFolder: $('bulk-folder'),
+  bulkOpenDownloadSettings: $('bulk-open-download-settings'),
+  bulkReadyContinue: $('bulk-ready-continue'),
+  bulkContinueAnyway: $('bulk-continue-anyway'),
   settingsModal: $('settings-modal'),
   settingsButton: $('settings-button'),
   settingsClose: $('settings-close'),
@@ -79,6 +90,7 @@ const els = {
 };
 
 let renderTimer = null;
+let persistTimer = null;
 let pendingCloseTabId = null;
 
 function escapeForDisplay(value) {
@@ -126,7 +138,7 @@ function showToast(title, detail = '', kind = 'info') {
     toast.appendChild(span);
   }
   els.toastStack.appendChild(toast);
-  setTimeout(() => toast.remove(), 3600);
+  setTimeout(() => toast.remove(), 4800);
 }
 
 function setScanStatus(title, detail, progress = null) {
@@ -152,6 +164,84 @@ function setScanningUi(scanning) {
   els.startScan.querySelector('span').textContent = scanning ? 'Scanning…' : 'Start scan';
   els.stopScan.classList.toggle('hidden', !scanning);
   els.scanSpinner.classList.toggle('done', !scanning && state.images.size > 0);
+}
+
+function snapshotImage(item) {
+  return {
+    url: item.url,
+    source: item.source || 'image',
+    sources: Array.isArray(item.sources) ? item.sources : [item.source || 'image'],
+    alt: item.alt || '',
+    width: Number(item.width) || 0,
+    height: Number(item.height) || 0,
+    frameUrl: item.frameUrl || '',
+    pageUrl: item.pageUrl || '',
+  };
+}
+
+function currentSnapshotTarget() {
+  return stripHash(els.targetUrl.value || state.initialUrl || '');
+}
+
+async function persistWorkspaceSnapshot() {
+  try {
+    const snapshot = {
+      targetUrl: currentSnapshotTarget(),
+      lastDomain: state.lastDomain,
+      images: Array.from(state.images.values()).map(snapshotImage),
+      selected: Array.from(state.selected),
+      renderLimit: state.renderLimit,
+      savedAt: Date.now(),
+    };
+    await chrome.storage.local.set({ [WORKSPACE_STATE_KEY]: snapshot });
+  } catch (error) {
+    console.warn('[SnapStream] Could not persist workspace snapshot:', error);
+  }
+}
+
+function schedulePersistWorkspace() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    persistWorkspaceSnapshot().catch(() => {});
+  }, 350);
+}
+
+async function flushWorkspaceSnapshot() {
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  await persistWorkspaceSnapshot();
+}
+
+async function restoreWorkspaceSnapshot() {
+  try {
+    const stored = await chrome.storage.local.get(WORKSPACE_STATE_KEY);
+    const snapshot = stored[WORKSPACE_STATE_KEY];
+    if (!snapshot || !Array.isArray(snapshot.images)) return;
+
+    const activeTarget = currentSnapshotTarget();
+    const snapshotTarget = stripHash(snapshot.targetUrl || '');
+    if (activeTarget && snapshotTarget && activeTarget !== snapshotTarget) return;
+
+    state.images.clear();
+    state.selected.clear();
+
+    for (const item of snapshot.images) {
+      if (!item || !item.url) continue;
+      state.images.set(item.url, snapshotImage(item));
+    }
+
+    for (const url of snapshot.selected || []) {
+      if (state.images.has(url)) state.selected.add(url);
+    }
+
+    if (snapshot.targetUrl && !els.targetUrl.value) els.targetUrl.value = snapshot.targetUrl;
+    state.lastDomain = snapshot.lastDomain || state.lastDomain;
+    state.renderLimit = Math.max(PAGE_SIZE, Number(snapshot.renderLimit) || PAGE_SIZE);
+    updateMetrics();
+  } catch (error) {
+    console.warn('[SnapStream] Could not restore workspace snapshot:', error);
+  }
 }
 
 async function loadSettings() {
@@ -199,6 +289,7 @@ async function saveSettings() {
   updateDepthPill();
   closeSettings();
   scheduleRender();
+  schedulePersistWorkspace();
   showToast('Settings saved', 'Your scanner and download preferences were updated.');
 }
 
@@ -261,6 +352,7 @@ async function useCurrentPage() {
   state.initialTabId = tab.id;
   state.initialUrl = tab.url;
   els.targetUrl.value = tab.url;
+  schedulePersistWorkspace();
   showToast('Current page selected', new URL(tab.url).hostname);
 }
 
@@ -318,6 +410,7 @@ function resetResults() {
   state.renderLimit = PAGE_SIZE;
   updateMetrics();
   renderGallery();
+  schedulePersistWorkspace();
 }
 
 async function startScan() {
@@ -350,6 +443,7 @@ async function startScan() {
     state.initialUrl = readyTab.url;
     state.lastDomain = new URL(readyTab.url).hostname;
     updateMetrics();
+    schedulePersistWorkspace();
 
     setScanStatus('Injecting deep scanner…', state.lastDomain, 6);
 
@@ -400,6 +494,7 @@ function mergeImage(item) {
       sources: Array.from(new Set([...(existing.sources || [existing.source]), item.source].filter(Boolean))),
     };
     state.images.set(item.url, merged);
+    schedulePersistWorkspace();
     return false;
   }
 
@@ -413,6 +508,7 @@ function mergeImage(item) {
     frameUrl: item.frameUrl || '',
     pageUrl: item.pageUrl || '',
   });
+  schedulePersistWorkspace();
   return true;
 }
 
@@ -436,6 +532,7 @@ function onScanMessage(message) {
       state.elementsChecked = Math.max(state.elementsChecked, Number(message.elementsChecked) || 0);
       updateMetrics();
       updateScanProgress(message.phase);
+      schedulePersistWorkspace();
     }
     return;
   }
@@ -467,6 +564,7 @@ async function finishScan(success, detail) {
   setScanningUi(false);
   updateMetrics();
   scheduleRender();
+  schedulePersistWorkspace();
 
   if (success) {
     setScanStatus('Scan complete', detail || `${state.images.size.toLocaleString()} images are ready.`, 100);
@@ -593,6 +691,7 @@ function createImageCard(item) {
       current.width = width;
       current.height = height;
       if (state.settings.autoSelectHd && Math.max(width, height) >= 1280) state.selected.add(item.url);
+      schedulePersistWorkspace();
       scheduleRender();
     }
   }, { once: true });
@@ -649,6 +748,7 @@ function createImageCard(item) {
 function toggleSelected(url) {
   if (state.selected.has(url)) state.selected.delete(url);
   else state.selected.add(url);
+  schedulePersistWorkspace();
   renderGallery();
 }
 
@@ -666,6 +766,7 @@ function selectVisible() {
     if (allSelected) state.selected.delete(item.url);
     else state.selected.add(item.url);
   });
+  schedulePersistWorkspace();
   renderGallery();
 }
 
@@ -675,6 +776,7 @@ function clearFilters() {
   els.filterSize.value = 'all';
   state.renderLimit = PAGE_SIZE;
   renderGallery();
+  schedulePersistWorkspace();
 }
 
 function sanitizeSegment(value, fallback = '') {
@@ -694,6 +796,36 @@ function filenameFor(index, total) {
   return `${folder ? `${folder}/` : ''}${prefix}${total > 1 ? `_${number}` : ''}`;
 }
 
+function downloadFolderLabel() {
+  const folder = sanitizeSegment(state.settings.downloadFolder);
+  return folder ? `Downloads/${folder}` : 'your default Downloads folder';
+}
+
+async function openBrowserDownloadSettings() {
+  try {
+    await chrome.tabs.create({ url: 'chrome://settings/downloads', active: true });
+    showToast('Download settings opened', 'Turn off “Ask where to save each file before downloading”, then return to SnapStream.');
+  } catch (error) {
+    showToast('Open download settings manually', 'Go to browser Settings → Downloads and turn off “Ask where to save each file”.', 'error');
+  }
+}
+
+function showBulkDownloadGuide(count) {
+  return new Promise((resolve) => {
+    state.bulkResolver = resolve;
+    els.bulkCount.textContent = count.toLocaleString();
+    els.bulkFolder.textContent = downloadFolderLabel();
+    els.bulkDownloadModal.classList.remove('hidden');
+  });
+}
+
+function closeBulkDownloadGuide(result = 'cancel') {
+  els.bulkDownloadModal.classList.add('hidden');
+  const resolver = state.bulkResolver;
+  state.bulkResolver = null;
+  if (resolver) resolver(result);
+}
+
 async function downloadOne(url) {
   const result = await downloadImageRobustly(url, { filename: filenameFor(0, 1), saveAs: false });
   if (result.success) showToast('Download started', result.filename || displayName({ url }));
@@ -703,9 +835,13 @@ async function downloadOne(url) {
 async function downloadSelected() {
   const items = Array.from(state.selected).map((url) => state.images.get(url)).filter(Boolean);
   if (!items.length) return;
-  if (items.length > 1 && state.settings.confirmBulkDownload) {
-    const ok = window.confirm(`Download ${items.length.toLocaleString()} selected images?`);
-    if (!ok) return;
+
+  if (items.length > BULK_DOWNLOAD_WARNING_THRESHOLD || (items.length > 1 && state.settings.confirmBulkDownload)) {
+    const choice = await showBulkDownloadGuide(items.length);
+    if (choice !== 'continue') {
+      showToast('Download paused', `${items.length.toLocaleString()} selected images are still selected.`);
+      return;
+    }
   }
 
   els.downloadSelected.disabled = true;
@@ -755,6 +891,7 @@ async function openFullWorkspace() {
   const params = new URLSearchParams();
   if (tabId) params.set('tabId', String(tabId));
   if (url) params.set('url', url);
+  await flushWorkspaceSnapshot();
   const query = params.toString();
   await chrome.tabs.create({ url: `${chrome.runtime.getURL('views/dashboard.html')}${query ? `?${query}` : ''}` });
 }
@@ -782,10 +919,16 @@ function bindEvents() {
   els.clearFilters.addEventListener('click', clearFilters);
   els.selectVisible.addEventListener('click', selectVisible);
   els.downloadSelected.addEventListener('click', downloadSelected);
-  els.loadMore.addEventListener('click', () => { state.renderLimit += PAGE_SIZE; renderGallery(); });
+  els.loadMore.addEventListener('click', () => { state.renderLimit += PAGE_SIZE; renderGallery(); schedulePersistWorkspace(); });
   els.previewClose.addEventListener('click', closePreview);
   els.previewDownload.addEventListener('click', () => { if (state.previewUrl) downloadOne(state.previewUrl); });
   els.previewModal.addEventListener('click', (event) => { if (event.target === els.previewModal) closePreview(); });
+  els.bulkClose.addEventListener('click', () => closeBulkDownloadGuide('cancel'));
+  els.bulkCancel.addEventListener('click', () => closeBulkDownloadGuide('cancel'));
+  els.bulkReadyContinue.addEventListener('click', () => closeBulkDownloadGuide('continue'));
+  els.bulkContinueAnyway.addEventListener('click', () => closeBulkDownloadGuide('continue'));
+  els.bulkOpenDownloadSettings.addEventListener('click', openBrowserDownloadSettings);
+  els.bulkDownloadModal.addEventListener('click', (event) => { if (event.target === els.bulkDownloadModal) closeBulkDownloadGuide('cancel'); });
   els.settingsButton.addEventListener('click', openSettings);
   els.settingsClose.addEventListener('click', closeSettings);
   els.settingsModal.addEventListener('click', (event) => { if (event.target === els.settingsModal) closeSettings(); });
@@ -795,6 +938,7 @@ function bindEvents() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (!els.previewModal.classList.contains('hidden')) closePreview();
+      else if (!els.bulkDownloadModal.classList.contains('hidden')) closeBulkDownloadGuide('cancel');
       else if (!els.settingsModal.classList.contains('hidden')) closeSettings();
     }
   });
@@ -805,6 +949,7 @@ function bindEvents() {
 async function init() {
   await loadSettings();
   await initializeTargetFromContext();
+  await restoreWorkspaceSnapshot();
   bindEvents();
   setScanningUi(false);
   updateMetrics();
