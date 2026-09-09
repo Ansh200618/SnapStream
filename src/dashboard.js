@@ -13,11 +13,12 @@ const DEFAULT_SETTINGS = {
   downloadFolder: 'SnapStream',
   filenamePrefix: 'image',
   confirmBulkDownload: true,
+  sortOrder: 'website',
 };
 
 const PAGE_SIZE = 120;
 const BULK_DOWNLOAD_WARNING_THRESHOLD = 10;
-const WORKSPACE_STATE_KEY = 'snapstreamWorkspaceSnapshotV2';
+const WORKSPACE_STATE_KEY = 'snapstreamWorkspaceSnapshotV3';
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -35,6 +36,10 @@ const state = {
   initialUrl: '',
   lastDomain: '',
   bulkResolver: null,
+  galleryTotal: 0,
+  galleryCompleted: 0,
+  galleryFailed: 0,
+  nextDiscoveryIndex: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -52,6 +57,9 @@ const els = {
   metricPass: $('metric-pass'),
   metricElements: $('metric-elements'),
   resultCount: $('result-count'),
+  visibleCount: $('visible-count'),
+  totalTargetCount: $('total-target-count'),
+  countCaption: $('count-caption'),
   sideCount: $('side-count'),
   sideDomain: $('side-domain'),
   galleryGrid: $('gallery-grid'),
@@ -63,6 +71,7 @@ const els = {
   filterQuery: $('filter-query'),
   filterSource: $('filter-source'),
   filterSize: $('filter-size'),
+  sortOrder: $('sort-order'),
   clearFilters: $('clear-filters'),
   previewModal: $('preview-modal'),
   previewClose: $('preview-close'),
@@ -85,6 +94,7 @@ const els = {
   saveSettings: $('save-settings'),
   resetSettings: $('reset-settings'),
   openFullWorkspace: $('open-full-workspace'),
+  settingSortOrder: $('setting-sort-order'),
   depthPill: $('depth-pill'),
   toastStack: $('toast-stack'),
 };
@@ -93,7 +103,7 @@ let renderTimer = null;
 let persistTimer = null;
 let pendingCloseTabId = null;
 
-function escapeForDisplay(value) {
+function safeText(value) {
   return String(value || '').replace(/[\r\n\t]+/g, ' ').trim();
 }
 
@@ -148,13 +158,25 @@ function setScanStatus(title, detail, progress = null) {
   if (progress !== null) els.scanProgressBar.style.width = `${Math.max(2, Math.min(100, progress))}%`;
 }
 
+function galleryTargetLabel() {
+  return state.galleryTotal > 0 ? `of ${state.galleryTotal.toLocaleString()} expected` : 'total discovered';
+}
+
 function updateMetrics() {
   const count = state.images.size;
   els.metricFound.textContent = count.toLocaleString();
   els.metricPass.textContent = state.scanPass.toLocaleString();
   els.metricElements.textContent = state.elementsChecked.toLocaleString();
   els.resultCount.textContent = count.toLocaleString();
-  els.sideCount.textContent = `${count.toLocaleString()} image${count === 1 ? '' : 's'}`;
+  if (els.totalTargetCount) els.totalTargetCount.textContent = galleryTargetLabel();
+  if (els.countCaption) {
+    els.countCaption.textContent = state.galleryTotal > 0
+      ? `${count.toLocaleString()} collected from ${state.galleryCompleted.toLocaleString()}/${state.galleryTotal.toLocaleString()} gallery pages`
+      : `${count.toLocaleString()} unique images collected from this page`;
+  }
+  els.sideCount.textContent = state.galleryTotal > 0
+    ? `${count.toLocaleString()} / ${state.galleryTotal.toLocaleString()}`
+    : `${count.toLocaleString()} image${count === 1 ? '' : 's'}`;
   els.sideDomain.textContent = state.lastDomain || 'No website scanned';
 }
 
@@ -176,6 +198,8 @@ function snapshotImage(item) {
     height: Number(item.height) || 0,
     frameUrl: item.frameUrl || '',
     pageUrl: item.pageUrl || '',
+    orderIndex: Number(item.orderIndex) || 0,
+    discoveryIndex: Number(item.discoveryIndex) || 0,
   };
 }
 
@@ -191,6 +215,10 @@ async function persistWorkspaceSnapshot() {
       images: Array.from(state.images.values()).map(snapshotImage),
       selected: Array.from(state.selected),
       renderLimit: state.renderLimit,
+      galleryTotal: state.galleryTotal,
+      galleryCompleted: state.galleryCompleted,
+      galleryFailed: state.galleryFailed,
+      nextDiscoveryIndex: state.nextDiscoveryIndex,
       savedAt: Date.now(),
     };
     await chrome.storage.local.set({ [WORKSPACE_STATE_KEY]: snapshot });
@@ -215,8 +243,8 @@ async function flushWorkspaceSnapshot() {
 
 async function restoreWorkspaceSnapshot() {
   try {
-    const stored = await chrome.storage.local.get(WORKSPACE_STATE_KEY);
-    const snapshot = stored[WORKSPACE_STATE_KEY];
+    const stored = await chrome.storage.local.get([WORKSPACE_STATE_KEY, 'snapstreamWorkspaceSnapshotV2']);
+    const snapshot = stored[WORKSPACE_STATE_KEY] || stored.snapstreamWorkspaceSnapshotV2;
     if (!snapshot || !Array.isArray(snapshot.images)) return;
 
     const activeTarget = currentSnapshotTarget();
@@ -225,10 +253,15 @@ async function restoreWorkspaceSnapshot() {
 
     state.images.clear();
     state.selected.clear();
+    state.nextDiscoveryIndex = 0;
 
     for (const item of snapshot.images) {
       if (!item || !item.url) continue;
-      state.images.set(item.url, snapshotImage(item));
+      const normalized = snapshotImage(item);
+      if (!normalized.discoveryIndex) normalized.discoveryIndex = state.nextDiscoveryIndex + 1;
+      if (!normalized.orderIndex) normalized.orderIndex = normalized.discoveryIndex;
+      state.nextDiscoveryIndex = Math.max(state.nextDiscoveryIndex, normalized.discoveryIndex, normalized.orderIndex);
+      state.images.set(normalized.url, normalized);
     }
 
     for (const url of snapshot.selected || []) {
@@ -238,6 +271,9 @@ async function restoreWorkspaceSnapshot() {
     if (snapshot.targetUrl && !els.targetUrl.value) els.targetUrl.value = snapshot.targetUrl;
     state.lastDomain = snapshot.lastDomain || state.lastDomain;
     state.renderLimit = Math.max(PAGE_SIZE, Number(snapshot.renderLimit) || PAGE_SIZE);
+    state.galleryTotal = Math.max(0, Number(snapshot.galleryTotal) || 0);
+    state.galleryCompleted = Math.max(0, Number(snapshot.galleryCompleted) || 0);
+    state.galleryFailed = Math.max(0, Number(snapshot.galleryFailed) || 0);
     updateMetrics();
   } catch (error) {
     console.warn('[SnapStream] Could not restore workspace snapshot:', error);
@@ -264,6 +300,8 @@ function populateSettingsForm() {
   $('setting-folder').value = state.settings.downloadFolder;
   $('setting-prefix').value = state.settings.filenamePrefix;
   $('setting-confirm').checked = state.settings.confirmBulkDownload;
+  if (els.sortOrder) els.sortOrder.value = state.settings.sortOrder || 'website';
+  if (els.settingSortOrder) els.settingSortOrder.value = state.settings.sortOrder || 'website';
 }
 
 function readSettingsForm() {
@@ -280,17 +318,19 @@ function readSettingsForm() {
     downloadFolder: String($('setting-folder').value || '').trim(),
     filenamePrefix: String($('setting-prefix').value || '').trim(),
     confirmBulkDownload: $('setting-confirm').checked,
+    sortOrder: els.settingSortOrder ? els.settingSortOrder.value : (els.sortOrder?.value || 'website'),
   };
 }
 
 async function saveSettings() {
   state.settings = readSettingsForm();
   await chrome.storage.local.set({ snapstreamWorkspaceSettings: state.settings });
+  if (els.sortOrder) els.sortOrder.value = state.settings.sortOrder;
   updateDepthPill();
   closeSettings();
   scheduleRender();
   schedulePersistWorkspace();
-  showToast('Settings saved', 'Your scanner and download preferences were updated.');
+  showToast('Settings saved', 'Your scanner, sorting and download preferences were updated.');
 }
 
 function updateDepthPill() {
@@ -408,6 +448,10 @@ function resetResults() {
   state.scanPass = 0;
   state.elementsChecked = 0;
   state.renderLimit = PAGE_SIZE;
+  state.galleryTotal = 0;
+  state.galleryCompleted = 0;
+  state.galleryFailed = 0;
+  state.nextDiscoveryIndex = 0;
   updateMetrics();
   renderGallery();
   schedulePersistWorkspace();
@@ -426,7 +470,7 @@ async function startScan() {
   }
 
   resetResults();
-  state.scanId = crypto.randomUUID ? crypto.randomUUID() : `scan-${Date.now()}-${Math.random()}`;
+  state.scanId = globalThis.crypto?.randomUUID ? crypto.randomUUID() : `scan-${Date.now()}-${Math.random()}`;
   setScanningUi(true);
   setScanStatus('Opening scan source…', target, 3);
 
@@ -446,7 +490,6 @@ async function startScan() {
     schedulePersistWorkspace();
 
     setScanStatus('Injecting deep scanner…', state.lastDomain, 6);
-
     await chrome.runtime.sendMessage({ origin: new URL(readyTab.url).origin }).catch(() => {});
 
     await chrome.scripting.executeScript({
@@ -454,7 +497,7 @@ async function startScan() {
       files: ['src/deepScan.js'],
     });
 
-    setScanStatus('Scanning page…', 'Collecting visible, lazy-loaded and background images.', 8);
+    setScanStatus('Scanning page…', 'Collecting page-order images, lazy-loaded media and numbered galleries.', 8);
 
     await chrome.tabs.sendMessage(readyTab.id, {
       type: 'SNAPSTREAM_RUN_SCAN',
@@ -482,38 +525,54 @@ async function stopScan() {
   }
 }
 
+function applyGalleryStats(message) {
+  const total = Number(message.galleryTotal) || 0;
+  const completed = Number(message.galleryCompleted) || 0;
+  const failed = Number(message.galleryFailed) || 0;
+  if (total > 0) state.galleryTotal = Math.max(state.galleryTotal, total);
+  if (completed > 0) state.galleryCompleted = Math.max(state.galleryCompleted, completed);
+  if (failed > 0) state.galleryFailed = Math.max(state.galleryFailed, failed);
+}
+
 function mergeImage(item) {
   if (!item || !item.url) return false;
+  const explicitOrder = Number(item.orderIndex || item.sequence || item.pageIndex || 0);
   const existing = state.images.get(item.url);
   if (existing) {
-    const merged = {
+    const mergedOrder = explicitOrder > 0
+      ? Math.min(existing.orderIndex || explicitOrder, explicitOrder)
+      : existing.orderIndex;
+    state.images.set(item.url, {
       ...existing,
-      alt: existing.alt || item.alt || '',
-      width: Math.max(existing.width || 0, item.width || 0),
-      height: Math.max(existing.height || 0, item.height || 0),
+      alt: existing.alt || safeText(item.alt),
+      width: Math.max(existing.width || 0, Number(item.width) || 0),
+      height: Math.max(existing.height || 0, Number(item.height) || 0),
+      orderIndex: mergedOrder || existing.discoveryIndex,
       sources: Array.from(new Set([...(existing.sources || [existing.source]), item.source].filter(Boolean))),
-    };
-    state.images.set(item.url, merged);
-    schedulePersistWorkspace();
+    });
     return false;
   }
 
+  state.nextDiscoveryIndex += 1;
+  const discoveryIndex = state.nextDiscoveryIndex;
   state.images.set(item.url, {
     url: item.url,
     source: item.source || 'image',
     sources: [item.source || 'image'],
-    alt: escapeForDisplay(item.alt),
+    alt: safeText(item.alt),
     width: Number(item.width) || 0,
     height: Number(item.height) || 0,
     frameUrl: item.frameUrl || '',
     pageUrl: item.pageUrl || '',
+    discoveryIndex,
+    orderIndex: explicitOrder > 0 ? explicitOrder : discoveryIndex,
   });
-  schedulePersistWorkspace();
   return true;
 }
 
 function onScanMessage(message) {
   if (!message || !message.scanId || message.scanId !== state.scanId) return;
+  applyGalleryStats(message);
 
   if (message.type === 'SNAPSTREAM_SCAN_BATCH') {
     let added = 0;
@@ -523,6 +582,7 @@ function onScanMessage(message) {
     if (added) scheduleRender();
     updateMetrics();
     updateScanProgress(message.phase);
+    schedulePersistWorkspace();
     return;
   }
 
@@ -545,18 +605,24 @@ function onScanMessage(message) {
   if (message.type === 'SNAPSTREAM_SCAN_FRAME_DONE' && message.isTopFrame) {
     state.scanPass = Math.max(state.scanPass, Number(message.pass) || 0);
     state.elementsChecked = Math.max(state.elementsChecked, Number(message.elementsChecked) || 0);
+    applyGalleryStats(message);
     finishScan(true, message.cancelled ? 'Scan stopped. Results found so far are ready.' : 'Deep scan complete.');
   }
 }
 
 function updateScanProgress(phase) {
-  const percent = phase === 'finalizing' ? 98 : Math.min(95, 8 + (state.scanPass / maxPasses()) * 87);
-  const phaseTitle = phase === 'finalizing' ? 'Finalizing image list…' : 'Scanning page…';
-  setScanStatus(
-    phaseTitle,
-    `${state.images.size.toLocaleString()} unique images found · pass ${state.scanPass.toLocaleString()}`,
-    percent
-  );
+  let percent;
+  let detail;
+  if (phase === 'gallery-crawl' && state.galleryTotal > 0) {
+    const checked = Math.min(state.galleryCompleted || state.scanPass, state.galleryTotal);
+    percent = Math.min(98, 8 + (checked / state.galleryTotal) * 88);
+    detail = `${state.images.size.toLocaleString()} images found · ${checked.toLocaleString()}/${state.galleryTotal.toLocaleString()} gallery pages checked`;
+  } else {
+    percent = phase === 'finalizing' ? 98 : Math.min(95, 8 + (state.scanPass / maxPasses()) * 87);
+    detail = `${state.images.size.toLocaleString()} unique images found · pass ${state.scanPass.toLocaleString()}`;
+  }
+  const phaseTitle = phase === 'finalizing' ? 'Finalizing image list…' : phase === 'gallery-crawl' ? 'Crawling numbered gallery…' : 'Scanning page…';
+  setScanStatus(phaseTitle, detail, percent);
 }
 
 async function finishScan(success, detail) {
@@ -567,7 +633,10 @@ async function finishScan(success, detail) {
   schedulePersistWorkspace();
 
   if (success) {
-    setScanStatus('Scan complete', detail || `${state.images.size.toLocaleString()} images are ready.`, 100);
+    const finalDetail = state.galleryTotal > 0
+      ? `${state.images.size.toLocaleString()} images collected from ${Math.min(state.galleryCompleted || state.scanPass, state.galleryTotal).toLocaleString()}/${state.galleryTotal.toLocaleString()} gallery pages.`
+      : (detail || `${state.images.size.toLocaleString()} images are ready.`);
+    setScanStatus('Scan complete', finalDetail, 100);
     els.scanSpinner.classList.add('done');
     if (wasScanning) showToast('Scan complete', `${state.images.size.toLocaleString()} unique images discovered.`);
   } else {
@@ -589,6 +658,10 @@ async function finishScan(success, detail) {
   }
 }
 
+function activeSortOrder() {
+  return els.sortOrder?.value || state.settings.sortOrder || 'website';
+}
+
 function getFilteredImages() {
   const query = els.filterQuery.value.trim().toLowerCase();
   const source = els.filterSource.value;
@@ -596,7 +669,7 @@ function getFilteredImages() {
   const minWidth = Number(state.settings.minWidth) || 0;
   const minHeight = Number(state.settings.minHeight) || 0;
 
-  return Array.from(state.images.values()).filter((item) => {
+  const filtered = Array.from(state.images.values()).filter((item) => {
     if (query) {
       const haystack = `${item.url} ${item.alt || ''} ${(item.sources || []).join(' ')}`.toLowerCase();
       if (!haystack.includes(query)) return false;
@@ -616,6 +689,17 @@ function getFilteredImages() {
     }
     return true;
   });
+
+  const area = (item) => (Number(item.width) || 0) * (Number(item.height) || 0);
+  const order = activeSortOrder();
+  filtered.sort((a, b) => {
+    if (order === 'newest') return (b.discoveryIndex || 0) - (a.discoveryIndex || 0);
+    if (order === 'largest') return area(b) - area(a) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    if (order === 'smallest') return area(a) - area(b) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    if (order === 'source') return String(a.source).localeCompare(String(b.source)) || (a.orderIndex || 0) - (b.orderIndex || 0);
+    return (a.orderIndex || a.discoveryIndex || 0) - (b.orderIndex || b.discoveryIndex || 0);
+  });
+  return filtered;
 }
 
 function scheduleRender() {
@@ -661,11 +745,13 @@ function renderGallery() {
   els.galleryGrid.classList.toggle('hidden', state.images.size === 0);
   els.loadMore.classList.toggle('hidden', state.images.size === 0 || visible.length >= filtered.length);
   els.loadMore.textContent = `Show more · ${(filtered.length - visible.length).toLocaleString()} remaining`;
+  if (els.visibleCount) els.visibleCount.textContent = filtered.length.toLocaleString();
 
   const fragment = document.createDocumentFragment();
   visible.forEach((item) => fragment.appendChild(createImageCard(item)));
   els.galleryGrid.appendChild(fragment);
   updateSelectionUi(filtered);
+  updateMetrics();
 }
 
 function createImageCard(item) {
@@ -711,6 +797,11 @@ function createImageCard(item) {
   badge.className = 'source-badge';
   badge.textContent = item.source === 'image' ? 'page image' : item.source;
   stage.appendChild(badge);
+
+  const order = document.createElement('span');
+  order.className = 'order-badge';
+  order.textContent = `#${(item.orderIndex || item.discoveryIndex || 0).toLocaleString()}`;
+  stage.appendChild(order);
 
   const body = document.createElement('div');
   body.className = 'card-body';
@@ -803,6 +894,7 @@ function downloadFolderLabel() {
 
 async function openBrowserDownloadSettings() {
   try {
+    await flushWorkspaceSnapshot();
     await chrome.tabs.create({ url: 'chrome://settings/downloads', active: true });
     showToast('Download settings opened', 'Turn off “Ask where to save each file before downloading”, then return to SnapStream.');
   } catch (error) {
@@ -833,10 +925,14 @@ async function downloadOne(url) {
 }
 
 async function downloadSelected() {
-  const items = Array.from(state.selected).map((url) => state.images.get(url)).filter(Boolean);
+  const items = Array.from(state.selected)
+    .map((url) => state.images.get(url))
+    .filter(Boolean)
+    .sort((a, b) => (a.orderIndex || a.discoveryIndex || 0) - (b.orderIndex || b.discoveryIndex || 0));
   if (!items.length) return;
 
   if (items.length > BULK_DOWNLOAD_WARNING_THRESHOLD || (items.length > 1 && state.settings.confirmBulkDownload)) {
+    await flushWorkspaceSnapshot();
     const choice = await showBulkDownloadGuide(items.length);
     if (choice !== 'continue') {
       showToast('Download paused', `${items.length.toLocaleString()} selected images are still selected.`);
@@ -874,7 +970,7 @@ function openPreview(url) {
   els.previewImage.src = item.url;
   els.previewImage.alt = item.alt || 'Image preview';
   els.previewTitle.textContent = displayName(item);
-  els.previewMeta.textContent = `${dimensionsLabel(item)} · ${(item.sources || [item.source]).join(', ')}`;
+  els.previewMeta.textContent = `${dimensionsLabel(item)} · order #${(item.orderIndex || item.discoveryIndex || 0).toLocaleString()} · ${(item.sources || [item.source]).join(', ')}`;
   els.previewUrl.textContent = item.url;
   els.previewModal.classList.remove('hidden');
 }
@@ -914,8 +1010,16 @@ function bindEvents() {
   els.useCurrentPage.addEventListener('click', useCurrentPage);
   els.targetUrl.addEventListener('keydown', (event) => { if (event.key === 'Enter') startScan(); });
   els.filterQuery.addEventListener('input', () => { state.renderLimit = PAGE_SIZE; scheduleRender(); });
-  els.filterSource.addEventListener('change', () => { state.renderLimit = PAGE_SIZE; renderGallery(); });
-  els.filterSize.addEventListener('change', () => { state.renderLimit = PAGE_SIZE; renderGallery(); });
+  els.filterSource.addEventListener('change', () => { state.renderLimit = PAGE_SIZE; renderGallery(); schedulePersistWorkspace(); });
+  els.filterSize.addEventListener('change', () => { state.renderLimit = PAGE_SIZE; renderGallery(); schedulePersistWorkspace(); });
+  els.sortOrder.addEventListener('change', async () => {
+    state.settings.sortOrder = els.sortOrder.value;
+    if (els.settingSortOrder) els.settingSortOrder.value = els.sortOrder.value;
+    await chrome.storage.local.set({ snapstreamWorkspaceSettings: state.settings });
+    state.renderLimit = PAGE_SIZE;
+    renderGallery();
+    schedulePersistWorkspace();
+  });
   els.clearFilters.addEventListener('click', clearFilters);
   els.selectVisible.addEventListener('click', selectVisible);
   els.downloadSelected.addEventListener('click', downloadSelected);
@@ -933,7 +1037,11 @@ function bindEvents() {
   els.settingsClose.addEventListener('click', closeSettings);
   els.settingsModal.addEventListener('click', (event) => { if (event.target === els.settingsModal) closeSettings(); });
   els.saveSettings.addEventListener('click', saveSettings);
-  els.resetSettings.addEventListener('click', () => { state.settings = { ...DEFAULT_SETTINGS }; populateSettingsForm(); });
+  els.resetSettings.addEventListener('click', () => {
+    state.settings = { ...DEFAULT_SETTINGS };
+    populateSettingsForm();
+    renderGallery();
+  });
   els.openFullWorkspace.addEventListener('click', openFullWorkspace);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
