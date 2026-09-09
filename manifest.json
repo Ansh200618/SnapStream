@@ -1,7 +1,7 @@
 {
   "name": "SnapStream - Image Downloader",
-  "description": "Deep-scan websites, review image quality, preserve website order, and download images in bulk from a professional workspace.",
-  "version": "5.0.4",
+  "description": "Deep-scan websites, review image quality, preserve website order, create ZIP packages, and download images in bulk from a professional workspace.",
+  "version": "5.0.5",
   "minimum_chrome_version": "116",
   "manifest_version": 3,
   "permissions": [
