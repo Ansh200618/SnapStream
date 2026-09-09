@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromMinutes(8),
-        DefaultRequestHeaders = { { "User-Agent", "SnapStream-Windows-Manager/2.0" } }
+        DefaultRequestHeaders = { { "User-Agent", "SnapStream-Windows-Manager/2.2" } }
     };
 
     private static readonly string AppRoot = Path.Combine(
@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BrowserInfo> _browsers = new();
     private BrowserInfo? _selectedBrowser;
     private string? _remoteVersion;
+    private Func<Task>? _dialogPrimaryAction;
 
     public MainWindow()
     {
@@ -38,8 +39,9 @@ public partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
+        UpdateVersionCards(null, null);
         DetectBrowsers();
-        await CheckForUpdatesAsync(false);
+        await CheckForUpdatesAsync(showDialog: false);
     }
 
     private void DetectBrowsers()
@@ -105,11 +107,13 @@ public partial class MainWindow : Window
             choose.IsSelected = true;
             _selectedBrowser = choose;
             BrowserSummary.Text = $"{_browsers.Count} supported Chromium browser{(_browsers.Count == 1 ? "" : "s")} detected · {choose.Name} selected";
+            SelectedBrowserText.Text = choose.Name;
         }
         else
         {
             _selectedBrowser = null;
             BrowserSummary.Text = "No supported Chromium browser detected";
+            SelectedBrowserText.Text = "Not found";
             StatusText.Text = "Install Chrome, Edge, Brave, Vivaldi, Opera, or Opera GX, then press Rescan.";
         }
     }
@@ -118,6 +122,7 @@ public partial class MainWindow : Window
     {
         var path = candidates.FirstOrDefault(File.Exists);
         if (path is null || _browsers.Any(x => string.Equals(x.ExePath, path, StringComparison.OrdinalIgnoreCase))) return;
+
         var version = "Version unknown";
         try
         {
@@ -125,45 +130,84 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(info.FileVersion)) version = $"Version {info.FileVersion}";
         }
         catch { }
+
         _browsers.Add(new BrowserInfo(name, path, extensionsPage, version));
     }
 
-    private async Task CheckForUpdatesAsync(bool showProgress)
+    private async Task CheckForUpdatesAsync(bool showDialog)
     {
         try
         {
-            TopStatus.Text = "Checking GitHub…";
-            if (showProgress)
+            TopStatus.Text = "Checking GitHub...";
+            if (showDialog)
             {
                 Progress.IsIndeterminate = true;
-                StatusText.Text = "Checking GitHub for the latest SnapStream extension version…";
+                StatusText.Text = "Checking GitHub for the latest SnapStream extension version...";
             }
 
             var json = await Http.GetStringAsync(RawManifestUrl);
             using var doc = JsonDocument.Parse(json);
             _remoteVersion = doc.RootElement.GetProperty("version").GetString() ?? "unknown";
             var localVersion = ReadLocalVersion();
+            UpdateVersionCards(localVersion, _remoteVersion);
 
             if (localVersion is null)
             {
-                VersionTitle.Text = $"SnapStream {_remoteVersion} available";
-                VersionDetail.Text = "Extension files are not installed on this PC yet";
-                InstallButton.Content = "Install latest extension";
+                VersionTitle.Text = $"SnapStream {_remoteVersion} is available";
+                VersionDetail.Text = "The extension files are not installed on this PC yet.";
+                SetInstallButtonsContent($"Install SnapStream {_remoteVersion}");
                 TopStatus.Text = "Ready to install";
+                SideVersionText.Text = "Not installed";
+                SideVersionDetail.Text = $"Latest available: {_remoteVersion}";
+                if (showDialog)
+                {
+                    ShowDialogCard(
+                        "Installation needed",
+                        $"SnapStream {_remoteVersion} is ready to install",
+                        "This PC does not have the SnapStream extension files yet. Press Install to download the latest GitHub build into the permanent extension folder.",
+                        "Install latest",
+                        RunInstallFromUiAsync,
+                        "Later");
+                }
             }
             else if (CompareVersions(_remoteVersion, localVersion) > 0)
             {
                 VersionTitle.Text = $"Update {_remoteVersion} available";
-                VersionDetail.Text = $"Installed extension: {localVersion}";
-                InstallButton.Content = $"Update to {_remoteVersion}";
+                VersionDetail.Text = $"Installed extension: {localVersion}. Latest GitHub version: {_remoteVersion}.";
+                SetInstallButtonsContent($"Update to {_remoteVersion}");
                 TopStatus.Text = "Update available";
+                SideVersionText.Text = $"v{localVersion}";
+                SideVersionDetail.Text = $"Update available: v{_remoteVersion}";
+                if (showDialog)
+                {
+                    ShowDialogCard(
+                        "Update available",
+                        $"SnapStream {_remoteVersion} is available",
+                        $"You are currently using SnapStream {localVersion}. The latest GitHub build is {_remoteVersion}.",
+                        $"Update to {_remoteVersion}",
+                        RunInstallFromUiAsync,
+                        "Not now");
+                }
             }
             else
             {
-                VersionTitle.Text = $"SnapStream {localVersion} is current";
-                VersionDetail.Text = "Your permanent extension folder matches the latest GitHub version";
-                InstallButton.Content = "Repair / reinstall latest";
+                VersionTitle.Text = $"SnapStream {localVersion} is fully up to date";
+                VersionDetail.Text = "Your permanent extension folder matches the latest GitHub version.";
+                SetInstallButtonsContent("Repair / reinstall latest");
                 TopStatus.Text = "Up to date";
+                SideVersionText.Text = $"v{localVersion}";
+                SideVersionDetail.Text = "Latest GitHub build installed";
+                StatusText.Text = showDialog ? "You are fully up to date." : StatusText.Text;
+                if (showDialog)
+                {
+                    ShowDialogCard(
+                        "Up to date",
+                        "You are on the latest SnapStream version",
+                        $"Installed extension: {localVersion}\nGitHub latest: {_remoteVersion}\n\nNo update is required. Use Repair / reinstall latest only if files are missing or Chrome shows the extension as broken.",
+                        "Done",
+                        null,
+                        null);
+                }
             }
         }
         catch (Exception ex)
@@ -172,15 +216,32 @@ public partial class MainWindow : Window
             VersionDetail.Text = ex.Message;
             TopStatus.Text = "Offline";
             StatusText.Text = "Check your internet connection and press Check now.";
+            RemoteVersionText.Text = "Offline";
+            if (showDialog)
+            {
+                ShowDialogCard(
+                    "Connection failed",
+                    "SnapStream could not check GitHub",
+                    $"The update check failed:\n{ex.Message}\n\nCheck your internet connection and try again.",
+                    "OK",
+                    null,
+                    null);
+            }
         }
         finally
         {
-            if (showProgress)
+            if (showDialog)
             {
                 Progress.IsIndeterminate = false;
                 Progress.Value = 0;
             }
         }
+    }
+
+    private void UpdateVersionCards(string? localVersion, string? remoteVersion)
+    {
+        LocalVersionText.Text = string.IsNullOrWhiteSpace(localVersion) ? "Not installed" : $"v{localVersion}";
+        RemoteVersionText.Text = string.IsNullOrWhiteSpace(remoteVersion) ? "Checking" : $"v{remoteVersion}";
     }
 
     private string? ReadLocalVersion()
@@ -201,12 +262,19 @@ public partial class MainWindow : Window
         return string.Compare(left, right, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async void InstallButton_Click(object sender, RoutedEventArgs e)
+    private async void InstallButton_Click(object sender, RoutedEventArgs e) => await RunInstallFromUiAsync();
+
+    private async Task RunInstallFromUiAsync()
     {
-        InstallButton.IsEnabled = false;
-        CheckButton.IsEnabled = false;
-        try { await InstallOrUpdateAsync(); }
-        finally { InstallButton.IsEnabled = true; CheckButton.IsEnabled = true; }
+        SetMainButtonsEnabled(false);
+        try
+        {
+            await InstallOrUpdateAsync();
+        }
+        finally
+        {
+            SetMainButtonsEnabled(true);
+        }
     }
 
     private async Task InstallOrUpdateAsync()
@@ -222,7 +290,8 @@ public partial class MainWindow : Window
 
         try
         {
-            StatusText.Text = "Downloading the latest SnapStream extension from GitHub…";
+            DialogOverlay.Visibility = Visibility.Collapsed;
+            StatusText.Text = "Downloading the latest SnapStream extension from GitHub...";
             TopStatus.Text = "Downloading";
             Progress.IsIndeterminate = false;
             Progress.Value = 8;
@@ -236,7 +305,7 @@ public partial class MainWindow : Window
             }
 
             Progress.Value = 40;
-            StatusText.Text = "Validating downloaded files and manifest…";
+            StatusText.Text = "Validating downloaded files and manifest...";
             ZipFile.ExtractToDirectory(zipPath, extractedRoot);
             var repoRoot = Directory.GetDirectories(extractedRoot).FirstOrDefault()
                 ?? throw new InvalidDataException("GitHub archive did not contain the repository folder.");
@@ -255,7 +324,7 @@ public partial class MainWindow : Window
             if (!File.Exists(Path.Combine(staging, "manifest.json"))) throw new InvalidDataException("Staged extension is invalid.");
 
             Progress.Value = 72;
-            StatusText.Text = "Writing the permanent SnapStream extension folder…";
+            StatusText.Text = "Writing the permanent SnapStream extension folder...";
             if (Directory.Exists(ExtensionRoot)) Directory.Move(ExtensionRoot, backup);
             Directory.Move(staging, ExtensionRoot);
             if (Directory.Exists(backup)) Directory.Delete(backup, true);
@@ -268,13 +337,29 @@ public partial class MainWindow : Window
                 extensionPath = ExtensionRoot
             }, new JsonSerializerOptions { WriteIndented = true }));
 
-            Progress.Value = 100;
-            VersionTitle.Text = $"SnapStream {_remoteVersion} installed";
-            VersionDetail.Text = "Extension files are ready and future updates will replace this same folder";
-            InstallButton.Content = "Repair / reinstall latest";
-            TopStatus.Text = "Installed";
             Clipboard.SetText(ExtensionRoot);
-            StatusText.Text = "Extension files installed successfully. The folder path is copied. If this is the first browser setup, use the purple ‘Open browser setup’ button and complete the three clearly shown browser steps once.";
+            Progress.Value = 100;
+            var installed = ReadLocalVersion() ?? _remoteVersion ?? "latest";
+            UpdateVersionCards(installed, _remoteVersion);
+            VersionTitle.Text = $"SnapStream {installed} is installed";
+            VersionDetail.Text = "Extension files are ready. If this is the first time on this browser, open the activation guide once.";
+            SetInstallButtonsContent("Repair / reinstall latest");
+            TopStatus.Text = "Installed";
+            SideVersionText.Text = $"v{installed}";
+            SideVersionDetail.Text = "Installed in the permanent folder";
+            StatusText.Text = "Extension files installed successfully. The extension folder path was copied to clipboard.";
+
+            ShowDialogCard(
+                "Install complete",
+                $"SnapStream {installed} is ready",
+                "The latest extension files are now installed in the permanent SnapStream folder. For first-time browser activation, open the in-app guide next. Future updates will reuse this same folder.",
+                "Open activation guide",
+                () =>
+                {
+                    ShowActivationGuide();
+                    return Task.CompletedTask;
+                },
+                "Done");
         }
         catch (Exception ex)
         {
@@ -284,10 +369,17 @@ public partial class MainWindow : Window
             }
             TopStatus.Text = "Install failed";
             StatusText.Text = $"Install failed: {ex.Message}";
-            MessageBox.Show(this, ex.Message, "SnapStream", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowDialogCard(
+                "Install failed",
+                "SnapStream could not finish installation",
+                ex.Message,
+                "OK",
+                null,
+                null);
         }
         finally
         {
+            Progress.IsIndeterminate = false;
             try { if (Directory.Exists(staging)) Directory.Delete(staging, true); } catch { }
             try { if (Directory.Exists(backup)) Directory.Delete(backup, true); } catch { }
             try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, true); } catch { }
@@ -301,6 +393,7 @@ public partial class MainWindow : Window
             var source = Path.Combine(repoRoot, file);
             if (File.Exists(source)) File.Copy(source, Path.Combine(destination, file), true);
         }
+
         foreach (var directory in new[] { "src", "views", "stylesheets", "images", "lib" })
         {
             var source = Path.Combine(repoRoot, directory);
@@ -322,59 +415,169 @@ public partial class MainWindow : Window
             foreach (var item in _browsers) item.IsSelected = item == browser;
             _selectedBrowser = browser;
             BrowserSummary.Text = $"{_browsers.Count} browser{(_browsers.Count == 1 ? "" : "s")} detected · {browser.Name} selected";
+            SelectedBrowserText.Text = browser.Name;
         }
     }
 
-    private async void CheckButton_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(true);
-    private void RescanBrowsers_Click(object sender, RoutedEventArgs e) => DetectBrowsers();
+    private async void CheckButton_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(showDialog: true);
+
+    private void RescanBrowsers_Click(object sender, RoutedEventArgs e)
+    {
+        DetectBrowsers();
+        ShowDialogCard(
+            "Browser scan complete",
+            _selectedBrowser is null ? "No supported browser found" : $"{_selectedBrowser.Name} is selected",
+            _selectedBrowser is null
+                ? "Install Chrome, Edge, Brave, Vivaldi, Opera, or Opera GX, then press Rescan again."
+                : $"SnapStream detected {_browsers.Count} supported browser{(_browsers.Count == 1 ? "" : "s")} on this PC.",
+            "OK",
+            null,
+            null);
+    }
+
     private void OpenExtensions_Click(object sender, RoutedEventArgs e) => OpenExtensionsPage();
     private void OpenFolder_Click(object sender, RoutedEventArgs e) => OpenFolder();
 
-    private void GuidedSetup_Click(object sender, RoutedEventArgs e)
+    private void GuidedSetup_Click(object sender, RoutedEventArgs e) => ShowActivationGuide();
+
+    private void ShowActivationGuide()
     {
         if (!Directory.Exists(ExtensionRoot) || !File.Exists(Path.Combine(ExtensionRoot, "manifest.json")))
         {
-            MessageBox.Show(this, "Install the SnapStream extension files first. Then use Browser setup.", "SnapStream", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowDialogCard(
+                "Install first",
+                "Install SnapStream files before browser activation",
+                "The extension folder is not ready yet. Install the latest extension files first, then open the activation guide.",
+                "Install latest",
+                RunInstallFromUiAsync,
+                "Cancel");
             return;
         }
+
         if (_selectedBrowser is null)
         {
-            MessageBox.Show(this, "Select a detected browser first.", "SnapStream", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowDialogCard(
+                "Browser required",
+                "Select a supported Chromium browser",
+                "SnapStream could not find Chrome, Edge, Brave, Vivaldi, Opera, or Opera GX on this PC. Install one of them or press Rescan after installation.",
+                "OK",
+                null,
+                null);
             return;
         }
 
         Clipboard.SetText(ExtensionRoot);
+        ActivationBrowserName.Text = $"Selected browser: {_selectedBrowser.Name}";
+        ActivationPathText.Text = ExtensionRoot;
+        ActivationOverlay.Visibility = Visibility.Visible;
+        StatusText.Text = "Activation guide is open. Read the steps first; the browser will open only after pressing the final button.";
+        Activate();
+    }
+
+    private void LaunchActivationBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        Clipboard.SetText(ExtensionRoot);
         OpenExtensionsPage();
-        StatusText.Text = $"{_selectedBrowser.Name} extensions page opened and the SnapStream folder path was copied. In the browser: 1) enable Developer mode, 2) click Load unpacked, 3) select the copied SnapStream Extension folder. This is required only once for that browser profile.";
-        MessageBox.Show(this,
-            $"Finish these steps in {_selectedBrowser.Name}:\n\n1. Turn ON Developer mode.\n2. Click Load unpacked.\n3. Select this folder (already copied):\n{ExtensionRoot}\n\nChrome security requires these clicks to be made by you once. After that, SnapStream updates this same folder automatically.",
-            "Finish SnapStream browser setup", MessageBoxButton.OK, MessageBoxImage.Information);
+        StatusText.Text = $"{_selectedBrowser?.Name ?? "Browser"} extensions page opened. The SnapStream folder path is still copied to clipboard.";
+    }
+
+    private void ActivationClose_Click(object sender, RoutedEventArgs e)
+    {
+        ActivationOverlay.Visibility = Visibility.Collapsed;
     }
 
     private void CopyPath_Click(object sender, RoutedEventArgs e)
     {
         Clipboard.SetText(ExtensionRoot);
         StatusText.Text = "SnapStream extension folder copied to clipboard.";
+        if (ActivationOverlay.Visibility == Visibility.Visible) ActivationPathText.Text = ExtensionRoot;
     }
 
     private void OpenExtensionsPage()
     {
         if (_selectedBrowser is null)
         {
-            MessageBox.Show(this, "Select or install a supported Chromium browser first.", "SnapStream", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowDialogCard(
+                "Browser required",
+                "Select a browser first",
+                "SnapStream needs a detected Chromium browser before it can open the extensions page.",
+                "OK",
+                null,
+                null);
             return;
         }
+
         try
         {
-            Process.Start(new ProcessStartInfo { FileName = _selectedBrowser.ExePath, Arguments = _selectedBrowser.ExtensionsPage, UseShellExecute = true });
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _selectedBrowser.ExePath,
+                Arguments = _selectedBrowser.ExtensionsPage,
+                UseShellExecute = true
+            });
         }
-        catch (Exception ex) { StatusText.Text = $"Could not open {_selectedBrowser.Name}: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Could not open {_selectedBrowser.Name}: {ex.Message}";
+            ShowDialogCard("Could not open browser", $"Could not open {_selectedBrowser.Name}", ex.Message, "OK", null, null);
+        }
     }
 
     private void OpenFolder()
     {
         Directory.CreateDirectory(ExtensionRoot);
-        Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = $"\"{ExtensionRoot}\"", UseShellExecute = true });
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{ExtensionRoot}\"",
+            UseShellExecute = true
+        });
+    }
+
+    private void SetInstallButtonsContent(string text)
+    {
+        InstallButton.Content = text;
+        InstallButtonSecondary.Content = text;
+    }
+
+    private void SetMainButtonsEnabled(bool enabled)
+    {
+        InstallButton.IsEnabled = enabled;
+        InstallButtonSecondary.IsEnabled = enabled;
+        CheckButton.IsEnabled = enabled;
+    }
+
+    private void ShowDialogCard(
+        string kicker,
+        string title,
+        string body,
+        string primaryText,
+        Func<Task>? primaryAction,
+        string? secondaryText)
+    {
+        _dialogPrimaryAction = primaryAction;
+        DialogKicker.Text = kicker;
+        DialogTitle.Text = title;
+        DialogBody.Text = body;
+        DialogPrimaryButton.Content = primaryText;
+        DialogSecondaryButton.Content = secondaryText ?? "Close";
+        DialogSecondaryButton.Visibility = string.IsNullOrWhiteSpace(secondaryText) ? Visibility.Collapsed : Visibility.Visible;
+        DialogOverlay.Visibility = Visibility.Visible;
+        Activate();
+    }
+
+    private async void DialogPrimaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var action = _dialogPrimaryAction;
+        DialogOverlay.Visibility = Visibility.Collapsed;
+        _dialogPrimaryAction = null;
+        if (action is not null) await action();
+    }
+
+    private void DialogSecondaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        DialogOverlay.Visibility = Visibility.Collapsed;
+        _dialogPrimaryAction = null;
     }
 }
 
@@ -382,8 +585,12 @@ public sealed class BrowserInfo
 {
     public BrowserInfo(string name, string exePath, string extensionsPage, string versionText)
     {
-        Name = name; ExePath = exePath; ExtensionsPage = extensionsPage; VersionText = versionText;
+        Name = name;
+        ExePath = exePath;
+        ExtensionsPage = extensionsPage;
+        VersionText = versionText;
     }
+
     public string Name { get; }
     public string ExePath { get; }
     public string ExtensionsPage { get; }
