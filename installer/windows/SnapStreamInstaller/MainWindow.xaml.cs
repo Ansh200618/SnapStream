@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromMinutes(8),
-        DefaultRequestHeaders = { { "User-Agent", "SnapStream-Windows-Manager/2.2" } }
+        DefaultRequestHeaders = { { "User-Agent", "SnapStream-Windows-Manager/2.3" } }
     };
 
     private static readonly string AppRoot = Path.Combine(
@@ -435,9 +435,8 @@ public partial class MainWindow : Window
             null);
     }
 
-    private void OpenExtensions_Click(object sender, RoutedEventArgs e) => OpenExtensionsPage();
+    private void OpenExtensions_Click(object sender, RoutedEventArgs e) => OpenExtensionsPage(promptBeforeGeneric: true);
     private void OpenFolder_Click(object sender, RoutedEventArgs e) => OpenFolder();
-
     private void GuidedSetup_Click(object sender, RoutedEventArgs e) => ShowActivationGuide();
 
     private void ShowActivationGuide()
@@ -477,8 +476,8 @@ public partial class MainWindow : Window
     private void LaunchActivationBrowser_Click(object sender, RoutedEventArgs e)
     {
         Clipboard.SetText(ExtensionRoot);
-        OpenExtensionsPage();
-        StatusText.Text = $"{_selectedBrowser?.Name ?? "Browser"} extensions page opened. The SnapStream folder path is still copied to clipboard.";
+        OpenExtensionsPage(promptBeforeGeneric: false);
+        StatusText.Text = $"{_selectedBrowser?.Name ?? "Browser"} extension setup page opened. The SnapStream folder path is still copied to clipboard.";
     }
 
     private void ActivationClose_Click(object sender, RoutedEventArgs e)
@@ -493,7 +492,7 @@ public partial class MainWindow : Window
         if (ActivationOverlay.Visibility == Visibility.Visible) ActivationPathText.Text = ExtensionRoot;
     }
 
-    private void OpenExtensionsPage()
+    private void OpenExtensionsPage(bool promptBeforeGeneric = false)
     {
         if (_selectedBrowser is null)
         {
@@ -507,20 +506,204 @@ public partial class MainWindow : Window
             return;
         }
 
+        var exactUrl = FindSnapStreamExtensionDetailsUrl(_selectedBrowser);
+        if (!string.IsNullOrWhiteSpace(exactUrl))
+        {
+            LaunchBrowserUrl(exactUrl, exact: true);
+            return;
+        }
+
+        if (promptBeforeGeneric)
+        {
+            ShowDialogCard(
+                "Browser setup needed",
+                "SnapStream is not activated in this browser yet",
+                $"I could not find SnapStream inside {_selectedBrowser.Name}'s installed extension profile. The app will open the Extensions page next. Then turn on Developer mode, click Load unpacked, and select the copied folder:\n\n{ExtensionRoot}",
+                "Open extensions page",
+                () =>
+                {
+                    Clipboard.SetText(ExtensionRoot);
+                    LaunchBrowserUrl(_selectedBrowser.ExtensionsPage, exact: false);
+                    return Task.CompletedTask;
+                },
+                "Cancel");
+            return;
+        }
+
+        LaunchBrowserUrl(_selectedBrowser.ExtensionsPage, exact: false);
+    }
+
+    private void LaunchBrowserUrl(string url, bool exact)
+    {
+        if (_selectedBrowser is null) return;
+
         try
         {
             Process.Start(new ProcessStartInfo
             {
                 FileName = _selectedBrowser.ExePath,
-                Arguments = _selectedBrowser.ExtensionsPage,
+                Arguments = $"--new-window \"{url}\"",
                 UseShellExecute = true
             });
+
+            StatusText.Text = exact
+                ? $"Opened the exact SnapStream extension details page in {_selectedBrowser.Name}."
+                : $"Opened {_selectedBrowser.Name} extensions page. The SnapStream folder path is copied when using the activation guide.";
         }
-        catch (Exception ex)
+        catch
         {
-            StatusText.Text = $"Could not open {_selectedBrowser.Name}: {ex.Message}";
-            ShowDialogCard("Could not open browser", $"Could not open {_selectedBrowser.Name}", ex.Message, "OK", null, null);
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = _selectedBrowser.ExePath,
+                    Arguments = $"\"{url}\"",
+                    UseShellExecute = true
+                });
+
+                StatusText.Text = exact
+                    ? $"Opened the SnapStream extension page in {_selectedBrowser.Name}."
+                    : $"Opened {_selectedBrowser.Name} extensions page.";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Could not open {_selectedBrowser.Name}: {ex.Message}";
+                ShowDialogCard("Could not open browser", $"Could not open {_selectedBrowser.Name}", ex.Message, "OK", null, null);
+            }
         }
+    }
+
+    private string? FindSnapStreamExtensionDetailsUrl(BrowserInfo browser)
+    {
+        var extensionId = FindSnapStreamExtensionId(browser);
+        if (string.IsNullOrWhiteSpace(extensionId)) return null;
+
+        var scheme = browser.ExtensionsPage.Split(new[] { "://" }, StringSplitOptions.None)[0];
+        if (string.IsNullOrWhiteSpace(scheme)) return null;
+        return $"{scheme}://extensions/?id={extensionId}";
+    }
+
+    private string? FindSnapStreamExtensionId(BrowserInfo browser)
+    {
+        foreach (var preferencesPath in EnumeratePreferenceFiles(browser))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(preferencesPath));
+                if (!doc.RootElement.TryGetProperty("extensions", out var extensions)) continue;
+                if (!extensions.TryGetProperty("settings", out var settings)) continue;
+
+                foreach (var extension in settings.EnumerateObject())
+                {
+                    var value = extension.Value;
+                    if (LooksLikeSnapStreamExtension(value)) return extension.Name;
+                }
+            }
+            catch
+            {
+                // Ignore locked or partially-written Preferences files and keep scanning other profiles.
+            }
+        }
+
+        return null;
+    }
+
+    private static bool LooksLikeSnapStreamExtension(JsonElement settings)
+    {
+        if (settings.TryGetProperty("path", out var pathElement))
+        {
+            var path = pathElement.GetString();
+            if (PathLooksLikeExtensionRoot(path)) return true;
+        }
+
+        if (settings.TryGetProperty("manifest", out var manifest))
+        {
+            if (manifest.TryGetProperty("name", out var nameElement) && IsSnapStreamText(nameElement.GetString())) return true;
+            if (manifest.TryGetProperty("description", out var descriptionElement) && IsSnapStreamText(descriptionElement.GetString())) return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSnapStreamText(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && value.Contains("SnapStream", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool PathLooksLikeExtensionRoot(string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+
+        try
+        {
+            var normalizedCandidate = NormalizePath(candidate);
+            var normalizedExtension = NormalizePath(ExtensionRoot);
+            return string.Equals(normalizedCandidate, normalizedExtension, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizePath(string value)
+    {
+        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(value.Trim().Trim('"')))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static IEnumerable<string> EnumeratePreferenceFiles(BrowserInfo browser)
+    {
+        foreach (var root in CandidateProfileRoots(browser))
+        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
+
+            var directPreferences = Path.Combine(root, "Preferences");
+            if (File.Exists(directPreferences)) yield return directPreferences;
+
+            if (!Directory.Exists(root)) continue;
+
+            IEnumerable<string> profileDirs;
+            try
+            {
+                profileDirs = Directory.EnumerateDirectories(root)
+                    .Where(path =>
+                    {
+                        var name = Path.GetFileName(path);
+                        return name.Equals("Default", StringComparison.OrdinalIgnoreCase)
+                               || name.Equals("Guest Profile", StringComparison.OrdinalIgnoreCase)
+                               || name.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .ToList();
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var profileDir in profileDirs)
+            {
+                var preferences = Path.Combine(profileDir, "Preferences");
+                if (File.Exists(preferences)) yield return preferences;
+            }
+        }
+    }
+
+    private static IEnumerable<string> CandidateProfileRoots(BrowserInfo browser)
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var name = browser.Name;
+
+        if (name.Contains("Chrome Canary", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Google\Chrome SxS\User Data");
+        else if (name.Contains("Chrome Beta", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Google\Chrome Beta\User Data");
+        else if (name.Contains("Chrome", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Google\Chrome\User Data");
+        else if (name.Contains("Edge Beta", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Microsoft\Edge Beta\User Data");
+        else if (name.Contains("Edge", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Microsoft\Edge\User Data");
+        else if (name.Contains("Brave", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"BraveSoftware\Brave-Browser\User Data");
+        else if (name.Contains("Vivaldi", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(local, @"Vivaldi\User Data");
+        else if (name.Contains("Opera GX", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(roaming, @"Opera Software\Opera GX Stable");
+        else if (name.Contains("Opera", StringComparison.OrdinalIgnoreCase)) yield return Path.Combine(roaming, @"Opera Software\Opera Stable");
     }
 
     private void OpenFolder()
